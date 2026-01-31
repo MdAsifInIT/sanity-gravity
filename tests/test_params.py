@@ -24,11 +24,11 @@ class TestParams:
         
         # Ideally we could verify vncpasswd file hash, but env verification + successful boot is strong enough for now
 
-    def test_custom_ports_vnc(self, clean_container, docker_cli, host_env):
+    def test_custom_ports_vnc(self, clean_container, docker_cli, host_env, free_port):
         container_name = clean_container("sanity-test-vnc-ports")
         
-        custom_vnc = "5999"
-        custom_novnc = "6999"
+        custom_vnc = str(free_port())
+        custom_novnc = str(free_port())
         
         env = host_env.copy()
         env.update({

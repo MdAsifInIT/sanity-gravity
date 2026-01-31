@@ -3,11 +3,23 @@ import subprocess
 import os
 import time
 import socket
+import contextlib
 
 # Global Constants
 DEFAULT_CORE_IMAGE = "sanity-gravity:core"
 DEFAULT_KASM_IMAGE = "sanity-gravity:kasm"
 DEFAULT_VNC_IMAGE = "sanity-gravity:vnc"
+
+@pytest.fixture
+def free_port():
+    """Fixture to find a free port."""
+    def _find():
+        with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+            s.bind(('', 0))
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            return s.getsockname()[1]
+    return _find
+
 
 @pytest.fixture(scope="session")
 def host_env():
