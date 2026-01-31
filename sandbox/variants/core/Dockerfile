@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LC_ALL=C.UTF-8
@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xfce4 \
     xfce4-goodies \
     xfce4-terminal \
+    dbus \
     dbus-x11 \
     x11-utils \
     x11-xserver-utils \
@@ -31,8 +32,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Google Chrome
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-    sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list' && \
+# Install Google Chrome
+RUN mkdir -p /etc/apt/keyrings && \
+    wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-chrome.gpg && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
     apt-get update && apt-get install -y google-chrome-stable && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -58,7 +61,7 @@ RUN mkdir -p /etc/apt/keyrings && \
 # We wrap the actual electron binary to ensure --no-sandbox is ALWAYS applied
 # regardless of how it's invoked (CLI, GUI, or subprocess)
 RUN mv /usr/share/antigravity/antigravity /usr/share/antigravity/antigravity-original && \
-    echo '#!/bin/bash\nexec /usr/share/antigravity/antigravity-original --no-sandbox "$@"' > /usr/share/antigravity/antigravity && \
+    echo '#!/bin/bash\nexec /usr/share/antigravity/antigravity-original --no-sandbox --disable-dev-shm-usage "$@"' > /usr/share/antigravity/antigravity && \
     chmod +x /usr/share/antigravity/antigravity && \
     if [ -f /usr/share/applications/antigravity.desktop ]; then \
         sed -i 's|Exec=/usr/bin/antigravity|Exec=/usr/bin/antigravity --no-sandbox|g' /usr/share/applications/antigravity.desktop; \

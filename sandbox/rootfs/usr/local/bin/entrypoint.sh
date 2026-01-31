@@ -81,5 +81,19 @@ if [ "$USER_NAME" != "developer" ]; then
     fi
 fi
 
+# Setup DBus & Machine ID
+if [ ! -s /etc/machine-id ]; then
+    echo "Generating /etc/machine-id..."
+    dbus-uuidgen > /etc/machine-id
+fi
+
+mkdir -p /var/run/dbus
+if [ -f /var/run/dbus/pid ]; then
+    rm /var/run/dbus/pid
+fi
+
+echo "Starting DBus System Daemon..."
+dbus-daemon --system --fork
+
 # Execute CMD (Supervisord)
 exec "$@"

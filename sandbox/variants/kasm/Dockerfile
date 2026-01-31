@@ -2,8 +2,8 @@ FROM sanity-gravity:core
 
 # Install KasmVNC
 # Using a fixed version for stability
-ENV KASM_VERSION=1.3.2
-ENV KASM_DEB=kasmvncserver_jammy_${KASM_VERSION}_amd64.deb
+ENV KASM_VERSION=1.4.0
+ENV KASM_DEB=kasmvncserver_noble_${KASM_VERSION}_amd64.deb
 
 RUN curl -L -O https://github.com/kasmtech/KasmVNC/releases/download/v${KASM_VERSION}/${KASM_DEB} && \
     apt-get update && apt-get install -y ./$KASM_DEB ssl-cert && \
