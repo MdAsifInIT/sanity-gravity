@@ -381,7 +381,9 @@ def sync_config(project_name, container_name, username):
         run_command(f"docker cp {config_dir}/. {container_name}:{target_dir}/")
         
         # Fix permissions (docker cp makes it root owned)
-        run_command(f"docker exec {container_name} chown -R {username}:{username} {target_dir}")
+        out = run_command(f"docker exec {container_name} chown -R {username}:{username} {target_dir}", capture=True, check=False)
+        if out:
+             print_warning(f"Failed to set permissions on {target_dir}: {out} (User mismatch?)")
         
         print_success("Configuration synced successfully.")
 

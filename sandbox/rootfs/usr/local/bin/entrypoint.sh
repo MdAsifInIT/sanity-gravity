@@ -35,9 +35,18 @@ else
         # But for a sandbox, usually we are fine creating a new one if 1000 is free.
         # If 1000 is taken by 'ubuntu', we can modify it.
         if [ "$EXISTING_USER" == "ubuntu" ]; then
-            usermod -l "$USER_NAME" -d /home/"$USER_NAME" -m ubuntu
-            groupmod -n "$USER_NAME" ubuntu
-            echo "Renamed 'ubuntu' user to '$USER_NAME'."
+            # Fix: Check if target home exists (e.g. from volume mount)
+            HOME_OPT="-m"
+            if [ -d "/home/$USER_NAME" ]; then HOME_OPT=""; fi
+
+            # Rename user 'ubuntu' -> $USER_NAME
+            usermod -l "$USER_NAME" -d /home/"$USER_NAME" $HOME_OPT ubuntu
+            
+            # Fix: Set primary group to match HOST_GID (created/verified earlier)
+            # We avoid renaming the 'ubuntu' group as it might conflict if we already created $USER_NAME group
+            usermod -g "$HOST_GID" "$USER_NAME"
+            
+            echo "Renamed 'ubuntu' user to '$USER_NAME' and set GID=$HOST_GID."
         fi
     fi
 fi
