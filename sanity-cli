@@ -5,6 +5,7 @@ import os
 import sys
 import shutil
 import time
+import socket
 
 # Configuration
 COMPOSE_FILE = "docker-compose.yml"
@@ -148,23 +149,34 @@ def up(args):
     # Auto-Port Assignment Logic
     # If using a custom name AND ports are default, switch to ephemeral ports (0)
     # UNLESS the user explicitly passed the port flag.
-    if args.name != "sanity-gravity":
-        # Check if user explicitly set ports by looking at sys.argv
-        # This avoids the issue where argparse defaults mask the user's intent.
-        
-        args_str = " ".join(sys.argv)
-        
-        # Helper to check if a flag was used
-        def is_flag_set(flags):
-            for f in flags:
-                if f in sys.argv:
-                    return True
-            return False
+    # ALSO: If using default name (sanity-gravity) but ports are BUSY, switch to 0.
 
+    # Helper to check if a flag was used
+    def is_flag_set(flags):
+        for f in flags:
+            if f in sys.argv:
+                return True
+        return False
+
+    if args.name != "sanity-gravity":
         if not is_flag_set(["--ssh-port", "-p"]) and args.ssh_port == "2222": ssh_port = "0"
         if not is_flag_set(["--kasm-port"]) and args.kasm_port == "8444": kasm_port = "0"
         if not is_flag_set(["--vnc-port"]) and args.vnc_port == "5901": vnc_port = "0"
         if not is_flag_set(["--novnc-port"]) and args.novnc_port == "6901": novnc_port = "0"
+    else:
+        # Default project: check if default ports are free
+        if not is_flag_set(["--ssh-port", "-p"]) and args.ssh_port == "2222" and is_port_in_use(2222):
+             print_warning("Default SSH port 2222 is busy. Switching to ephemeral.")
+             ssh_port = "0"
+        if not is_flag_set(["--kasm-port"]) and args.kasm_port == "8444" and is_port_in_use(8444):
+             print_warning("Default Kasm port 8444 is busy. Switching to ephemeral.")
+             kasm_port = "0"
+        if not is_flag_set(["--vnc-port"]) and args.vnc_port == "5901" and is_port_in_use(5901):
+             print_warning("Default VNC port 5901 is busy. Switching to ephemeral.")
+             vnc_port = "0"
+        if not is_flag_set(["--novnc-port"]) and args.novnc_port == "6901" and is_port_in_use(6901):
+             print_warning("Default noVNC port 6901 is busy. Switching to ephemeral.")
+             novnc_port = "0"
 
     env_vars = f"SSH_HOST_PORT={ssh_port} KASM_PORT={kasm_port} VNC_PORT={vnc_port} NOVNC_PORT={novnc_port} HOST_UID={uid} HOST_GID={gid} HOST_USER={username} HOST_PASSWORD={password} VNC_PW={password}"
 
@@ -490,41 +502,196 @@ def restart(args):
     """Restarts sandbox containers (docker compose restart)."""
     run_compose_cmd(args, "restart")
 
-def get_active_projects():
-    """Returns a list of active Sanity-Gravity project names."""
+def get_managed_projects():
+    """Found projects managed by this tool (have the specific label)."""
     try:
-        # List all containers with docker-compose project label AND filter by our image name
-        # We look for containers using images starting with 'sanity-gravity'
-        cmd = "docker ps --filter 'ancestor=sanity-gravity:core' --filter 'ancestor=sanity-gravity:kasm' --filter 'ancestor=sanity-gravity:vnc' --format '{{.Label \"com.docker.compose.project\"}}'"
-        
-        # Note: multiple filters in docker ps are usually AND logic for different keys, but OR logic for same key?
-        # Actually 'ancestor' filter is additive (OR) in newer docker versions? No, usually AND.
-        # Wait, docker ps filters are AND. So we can't filter multiple ancestors in one go if they are mutually exclusive.
-        # We need to run multiple commands or filter in python.
-        
-        # Let's get ALL compose projects first (like before) but then filter them.
-        # Or better: get all containers with their project AND image, then filter in Python.
-        
-        cmd = "docker ps --format '{{.Label \"com.docker.compose.project\"}}|{{.Image}}'"
+        # Use -a to find stopped containers as well
+        cmd = "docker ps -a --filter \"label=sanity.gravity.managed=true\" --format '{{.Label \"com.docker.compose.project\"}}'"
         output = run_command(cmd, capture=True, check=False)
         if not output:
             return []
-        
-        projects = set()
-        for line in output.splitlines():
-            parts = line.split('|')
-            if len(parts) == 2:
-                project, image = parts
-                if project and image.startswith("sanity-gravity"):
-                    projects.add(project)
-        
-        return sorted(list(projects))
+        return sorted(list(set(output.splitlines())))
     except:
         return []
 
+def get_legacy_projects():
+    """Found projects that match our variants but don't have the managed label."""
+    try:
+        # 1. Find ALL projects that look like ours (based on service names)
+        # We look for containers with label com.docker.compose.service in [core, kasm, vnc]
+        # AND include stopped containers (-a)
+        cmd = "docker ps -a --format '{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.service\"}}'"
+        output = run_command(cmd, capture=True, check=False)
+        
+        candidates = set()
+        if output:
+            for line in output.splitlines():
+                parts = line.split('|')
+                if len(parts) == 2:
+                    project, service = parts
+                    if project and service in VARIANTS:
+                        candidates.add(project)
+        
+        # 2. Get Managed projects
+        managed = set(get_managed_projects())
+        
+        # 3. Legacy = Candidates - Managed
+        return sorted(list(candidates - managed))
+    except:
+        return []
+
+def get_active_projects():
+    """Returns a list of active Sanity-Gravity project names (Strict Mode)."""
+    return get_managed_projects()
+
+def check_gpu_enabled(container_name):
+    """Checks if a container has GPU capabilities enabled."""
+    try:
+        # Check for DeviceRequests with nvidia driver
+        cmd = f"docker inspect -f '{{{{json .HostConfig.DeviceRequests}}}}' {container_name}"
+        output = run_command(cmd, capture=True, check=False)
+        if output and "nvidia" in output.lower():
+            return True
+    except:
+        pass
+    return False
+
+def is_port_in_use(port):
+    """Checks if a port is currently in use on localhost."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('127.0.0.1', port)) == 0
+
+def upgrade(args):
+    """Upgrades legacy containers to managed containers."""
+    legacy = get_legacy_projects()
+    
+    # Filter if specific name requested
+    target = getattr(args, "name", "sanity-gravity")
+    if target != "sanity-gravity":
+        if target in legacy:
+            legacy = [target]
+        else:
+            print_error(f"Project '{target}' is not identified as a legacy container.")
+            if legacy:
+                print(f"Detected legacy projects: {', '.join(legacy)}")
+            return
+
+    if not legacy:
+        print_success("All system components are up to date.")
+        return
+
+    print_header("Found Legacy Containers")
+    for p in legacy:
+        print(f" - {p}")
+    
+    print(f"\n{Colors.WARNING}This will recreate the containers to apply new management labels.{Colors.ENDC}")
+    print("Data in volumes will be preserved, but running processes will be interrupted.")
+    
+    # Check for interactive mode or force flag? 
+    # args doesn't strictly have force flag but we can ask user.
+    if sys.stdin.isatty():
+        choice = input(f"{Colors.BOLD}Proceed with upgrade? [y/N]: {Colors.ENDC}").lower().strip()
+        if choice != 'y':
+            print_info("Upgrade cancelled.")
+            return
+    else:
+        print_warning("Non-interactive mode: Auto-proceeding with upgrade.")
+
+    # Get current user info for fallback
+    host_uid, host_gid, host_user = get_uid_gid_user()
+
+    for p in legacy:
+        try:
+            print_info(f"Upgrading {p}...")
+            
+            # Find running services for this project
+            # Use -a to find stopped containers too
+            cmd = f"docker ps -a --filter \"label=com.docker.compose.project={p}\" --format '{{{{.Label \"com.docker.compose.service\"}}}}'"
+            services_out = run_command(cmd, capture=True, check=False)
+            if not services_out:
+                print_error(f"Could not determine services for {p}. Skipping.")
+                continue
+                
+            services = set(services_out.splitlines())
+            
+            # Get Environment Variables
+            env_vars = get_project_env(p)
+            
+            # Fallback for User
+            if "HOST_USER" not in env_vars: env_vars["HOST_USER"] = host_user
+            if "HOST_UID" not in env_vars: env_vars["HOST_UID"] = str(host_uid)
+            if "HOST_GID" not in env_vars: env_vars["HOST_GID"] = str(host_gid)
+            
+            username = env_vars["HOST_USER"]
+            
+            # Fallback for Ports
+            # If explicit ports are missing, check availablity or default to ephemeral (0)
+            # This avoids port collisions during recreation.
+            
+            if "SSH_HOST_PORT" not in env_vars:
+                if p != "sanity-gravity" or is_port_in_use(2222):
+                    env_vars["SSH_HOST_PORT"] = "0"
+            
+            if "KASM_PORT" not in env_vars:
+                if p != "sanity-gravity" or is_port_in_use(8444):
+                    env_vars["KASM_PORT"] = "0"
+
+            if "VNC_PORT" not in env_vars:
+                if p != "sanity-gravity" or is_port_in_use(5901):
+                    env_vars["VNC_PORT"] = "0"
+
+            if "NOVNC_PORT" not in env_vars:
+                if p != "sanity-gravity" or is_port_in_use(6901):
+                    env_vars["NOVNC_PORT"] = "0"
+
+            env_str = " ".join([f"{k}={v}" for k, v in env_vars.items()])
+
+            for s in services:
+                if s in VARIANTS:
+                    print_info(f"Recreating {p} ({s})...")
+                    
+                    container_name = f"{p}-{s}-1"
+                    
+                    # Prepare Compose Files
+                    compose_files = f"-f {COMPOSE_FILE}"
+                    
+                    # 1. GPU Support
+                    if check_gpu_enabled(container_name) and os.path.exists("docker-compose.gpu.yml"):
+                        compose_files += " -f docker-compose.gpu.yml"
+                        compose_files += " -f docker-compose.gpu.yml" # Duplicate just in case as per original code style
+                        print_info("  - GPU Support: Enabled")
+
+                    # 2. Git Context
+                    git_compose = generate_git_compose(username)
+                    if git_compose:
+                        compose_files += f" -f {git_compose}"
+                    
+                    # CRITICAL: Remove the old container to avoid name conflicts
+                    # This is especially important if the old container was created via 'docker run'
+                    # or is in a state where Compose can't atomic swap it.
+                    # We already have the env vars, so it's safe to destroy the old vessel.
+                    try:
+                        # Find container id for this specific service
+                        cmd_find = f"docker ps -a -q --filter \"label=com.docker.compose.project={p}\" --filter \"label=com.docker.compose.service={s}\""
+                        cid = run_command(cmd_find, capture=True, check=False)
+                        if cid:
+                             run_command(f"docker rm -f {cid}", check=False)
+                    except:
+                        pass # Ignore errors here, compose execution is the real test
+
+                    # Execute Recreate
+                    # We use --force-recreate to ensure labels are applied
+                    cmd = f"{env_str} docker compose -p {p} {compose_files} up -d --force-recreate {s}"
+                    run_command(cmd)
+        except Exception as e:
+            print_error(f"Failed to upgrade {p}: {e}")
+                 
+    print_success("Upgrade complete.")
+    status(args)
+
 def status(args):
     """Shows status of sandbox containers."""
-    target_project = args.name
+    target_project = getattr(args, "name", "sanity-gravity")
     
     # If the user specifically asked for a name other than default, just show that.
     # If default, we scan for all.
@@ -537,13 +704,13 @@ def status(args):
     projects_to_show = []
     if target_project == "sanity-gravity":
         # Show all active projects
-        if not active_projects:
-             print_info("No active Sanity-Gravity instances found.")
-             return
         projects_to_show = active_projects
     else:
         projects_to_show = [target_project]
 
+    if not projects_to_show and target_project == "sanity-gravity":
+         print_info("No managed Sanity-Gravity instances found.")
+    
     for project in projects_to_show:
         print_header(f"Sandbox Status ({project})")
         try:
@@ -557,7 +724,7 @@ def status(args):
             # Let's try 'docker ps' filtered by project for a more robust generic view if compose ps fails,
             # but 'docker compose ps' is prettier.
             
-            output = run_command(f"docker compose -p {project} -f {COMPOSE_FILE} ps", capture=True, check=False)
+            output = run_command(f"docker compose -p {project} -f {COMPOSE_FILE} ps -a", capture=True, check=False)
             if output:
                 print(output)
             else:
@@ -568,6 +735,16 @@ def status(args):
             print("")
         except:
             print_error(f"Failed to get status for {project}")
+
+    # Check for legacy (unmanaged) projects to warn user
+    # Only check if we are showing all projects (default view) or specifically asked
+    if target_project == "sanity-gravity":
+        legacy_projects = get_legacy_projects()
+        if legacy_projects:
+            print(f"\n{Colors.WARNING}⚠ Found {len(legacy_projects)} legacy container(s) not managed by Sanity CLI:{Colors.ENDC}")
+            for lp in legacy_projects:
+                print(f"  - {lp}")
+            print(f"{Colors.BOLD}Run 'sanity-cli upgrade' to detect and migrate them.{Colors.ENDC}")
 
 def test_suite(args):
     """Runs the test suite using pytest."""
@@ -675,6 +852,11 @@ def main():
     parser_list = subparsers.add_parser("list", help="List available variants")
     parser_list.set_defaults(func=list_variants)
 
+    # Upgrade Command
+    parser_upgrade = subparsers.add_parser("upgrade", help="Upgrade legacy containers to managed status")
+    parser_upgrade.add_argument("--name", "-n", default="sanity-gravity", help="Specific project to upgrade")
+    parser_upgrade.set_defaults(func=upgrade)
+    
     # Test Command
     parser_test = subparsers.add_parser("test", help="Run test suite")
     parser_test.add_argument("target", nargs="?", help="Specific test target (e.g., tests/test_core.py)")

@@ -15,6 +15,8 @@ services:
     ports:
       - "${SSH_HOST_PORT:-2222}:22"
     network_mode: bridge
+    labels:
+      sanity.gravity.managed: "true"
 
   kasm:
     build:
@@ -33,6 +35,8 @@ services:
       - ${WORKSPACE_DIR:-./workspace}:/home/${HOST_USER:-developer}/workspace
     shm_size: 512m
     restart: unless-stopped
+    labels:
+      sanity.gravity.managed: "true"
 
   vnc:
     build:
@@ -55,3 +59,5 @@ services:
       - ${WORKSPACE_DIR:-./workspace}:/home/${HOST_USER:-developer}/workspace
     shm_size: 512m
     restart: unless-stopped
+    labels:
+      sanity.gravity.managed: "true"
