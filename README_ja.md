@@ -15,7 +15,7 @@
 ## なぜ Sanity-Gravity なのか? (Why Sanity-Gravity?)
 
 *   **🛡️ 安全第一 (Safety First)**: 「AI エージェント実行」のリスクを隔離します。エージェントが `rm -rf /` や悪意のあるコードを実行しても、影響を受けるのはコンテナだけで、ホストマシンは安全です。
-*   **🖥️ 完全なデスクトップ GUI**: **Ubuntu 22.04 + XFCE4** と **KasmVNC** を内蔵しており、エージェントは実際の Web ブラウザ (Chrome) や GUI アプリケーションを人間と同じように自然に制御できます。
+*   **🖥️ 完全なデスクトップ GUI**: **Ubuntu 24.04 + XFCE4** と **KasmVNC** を内蔵しており、エージェントは実際の Web ブラウザ (Chrome) や GUI アプリケーションを人間と同じように自然に制御できます。
 *   **🚀 ゼロ設定 (Zero Config)**: **Antigravity IDE**、Google Chrome、Git、および必須の開発ツールがプリインストールされています。
 *   **🔌 シームレスな IO**: ホストユーザーの UID/GID を自動的にマッピングし、ワークスペースをマウントする際によくある「root 所有ファイルの権限地獄」を防ぎます。
 *   **🧩 マルチインスタンス対応 (Multi-Instance Capable)**: 複数の独立したサンドボックス環境（例：開発、テスト、本番環境用）を同時に実行でき、ポートの競合も自動的に処理されます。
@@ -76,7 +76,9 @@
 ./sanity-cli stop           # コンテナを停止 (データは保持)
 ./sanity-cli start          # 停止したコンテナを起動
 ./sanity-cli restart        # コンテナを再起動
-./sanity-cli status         # コンテナの状態を確認
+./sanity-cli status         # コンテナの状態を確認 (レガシーコンテナ含む)
+./sanity-cli upgrade        # スマートアップグレード (レガシーコンテナを移行)
+./sanity-cli sync_config    # 設定を実行中のコンテナに同期 (Runtime Sync)
 ```
 
 ### 設定の同期 (Configuration Sync)
@@ -86,6 +88,7 @@
 1.  **プロジェクト設定**: プロジェクトのルートに `config/` ディレクトリを作成し、`GEMINI.md` や `settings.json` を配置します。
 2.  **対話的な初期化**: 設定が見つからない場合、CLI はホスト (`~/.gemini/`) からコピーするか、新規作成するかを尋ねます。
 3.  **自動同期**: 起動するたびにファイルがコンテナ (`~/.gemini/`) にコピーされ、環境設定が常に最新の状態に保たれます。
+4.  **ランタイム同期 (Runtime Sync)**: `./sanity-cli sync_config` を使用して、コンテナを再起動することなく、設定の変更を実行中のコンテナに即座に反映できます。
 
 ### 🔑 Git コンテキスト共有 (Git Context Sharing)
 

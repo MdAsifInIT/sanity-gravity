@@ -15,7 +15,7 @@
 ## Why Sanity-Gravity?
 
 *   **🛡️ Safety First**: Isolates "Agentic Execution" risks. If an agent executes `rm -rf /` or malicious code, only the container is affected, not your host machine.
-*   **🖥️ Full Desktop GUI**: Includes **Ubuntu 22.04 + XFCE4** and **KasmVNC**, allowing agents to control a real web browser (Chrome) and GUI applications naturally.
+*   **🖥️ Full Desktop GUI**: Includes **Ubuntu 24.04 + XFCE4** and **KasmVNC**, allowing agents to control a real web browser (Chrome) and GUI applications naturally.
 *   **🚀 Zero Config**: Pre-installed with **Antigravity IDE**, Google Chrome, Git, and essential dev tools.
 *   **🔌 Seamless IO**: Automatically maps your host user's UID/GID, preventing the common "root-owned files" permission hell when mounting workspaces.
 *   **🧩 Multi-Instance Capable**: Run multiple isolated sandboxes simultaneously (e.g., separate environments for Dev, Test, and Prod) with automatic port assignment.
@@ -76,7 +76,9 @@ The project includes a helper script `sanity-cli` to manage the lifecycle:
 ./sanity-cli stop           # Stop containers (preserve data)
 ./sanity-cli start          # Start stopped containers
 ./sanity-cli restart        # Restart containers
-./sanity-cli status         # Check container status
+./sanity-cli status         # Check container status (and legacy containers)
+./sanity-cli upgrade        # Smart upgrade (migrates legacy containers)
+./sanity-cli sync_config    # Sync config to running containers (runtime)
 ```
 
 ### Configuration Sync
@@ -86,6 +88,7 @@ The project includes a helper script `sanity-cli` to manage the lifecycle:
 1.  **Project Config**: Place `GEMINI.md` or `settings.json` in a `config/` directory at the project root.
 2.  **Interactive Init**: If no config is found, the CLI will ask if you want to copy your host configuration (`~/.gemini/`) or start fresh.
 3.  **Automatic Sync**: Files are copied into the container (`~/.gemini/`) on every start, ensuring your environment is always up-to-date.
+4.  **Runtime Sync**: Use `./sanity-cli sync_config` to push configuration changes to a running container immediately without restarting it.
 
 ### 🔑 Git Context Sharing
 

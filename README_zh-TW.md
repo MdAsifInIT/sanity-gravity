@@ -15,7 +15,7 @@
 ## 為什麼選擇 Sanity-Gravity?
 
 *   **🛡️ 安全至上 (Safety First)**: 隔離「AI 自主執行」帶來的風險。如果 AI 代理執行了 `rm -rf /` 或惡意代碼，只有容器會受影響，您的本機主機毫髮無傷。
-*   **🖥️ 完整圖形桌面 (Full Desktop GUI)**: 內建 **Ubuntu 22.04 + XFCE4** 與 **KasmVNC**，讓 AI 代理能像真人一樣自然地操作瀏覽器 (Chrome) 和 GUI 應用程式。
+*   **🖥️ 完整圖形桌面 (Full Desktop GUI)**: 內建 **Ubuntu 24.04 + XFCE4** 與 **KasmVNC**，讓 AI 代理能像真人一樣自然地操作瀏覽器 (Chrome) 和 GUI 應用程式。
 *   **🚀 零配置 (Zero Config)**: 預先安裝了 **Antigravity IDE**、Google Chrome、Git 和必要的開發工具。
 *   **🔌 無縫 IO (Seamless IO)**: 自動映射您的主機使用者 UID/GID，防止在掛載工作區時常見的「root 權限地獄」問題。
 *   **🧩 支援多重實例 (Multi-Instance Capable)**: 可同時運行多個獨立的沙箱環境 (例如：分別用於開發、測試、生產環境)，並自動處理 Port 分配，互不衝突。
@@ -76,7 +76,9 @@
 ./sanity-cli stop           # 停止容器 (保留資料)
 ./sanity-cli start          # 啟動已停止的容器
 ./sanity-cli restart        # 重啟容器
-./sanity-cli status         # 檢查容器狀態
+./sanity-cli status         # 檢查容器狀態 (含舊版容器偵測)
+./sanity-cli upgrade        # 智慧升級 (自動遷移舊版容器)
+./sanity-cli sync_config    # 同步設定至運行中容器 (Runtime Sync)
 ```
 
 ### 設定同步 (Configuration Sync)
@@ -86,6 +88,7 @@
 1.  **專案級設定**: 在專案根目錄建立 `config/` 資料夾，並放入 `GEMINI.md` 或 `settings.json`。
 2.  **互動式初始化**: 若偵測不到設定，CLI 會詢問是否要從主機 (`~/.gemini/`) 複製或建立空白設定。
 3.  **自動同步**: 每次啟動時，檔案會自動複製進容器 (`~/.gemini/`)，確保環境設定始終保持最新。
+4.  **Runtime 同步**: 使用 `./sanity-cli sync_config` 可在不重啟容器的情況下，立即將設定變更推送至運行中的容器。
 
 ### 🔑 Git Context 共享
 
