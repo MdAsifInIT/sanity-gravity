@@ -24,21 +24,19 @@ class TestStatusDiscovery:
     @patch("sanity_cli.run_command")
     def test_get_active_projects_discovery(self, mock_run):
         # Mock docker ps output
-        # Format: project_name|image_name
-        mock_output = """project-a|sanity-gravity:core
-project-b|sanity-gravity:kasm
-other-project|nginx:latest
-project-c|sanity-gravity:vnc"""
+        # Current logic uses 'docker ps --filter label=...' and expects just project names
+        mock_output = """project-a
+project-b
+project-c"""
         
         mock_run.return_value = mock_output
         
         projects = sanity_cli.get_active_projects()
         
-        # Should only include projects with sanity-gravity images
+        # Verify projects are parsed correctly
         assert "project-a" in projects
         assert "project-b" in projects
         assert "project-c" in projects
-        assert "other-project" not in projects
         assert len(projects) == 3
         
     @patch("sanity_cli.run_command")
