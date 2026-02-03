@@ -8,6 +8,9 @@ from importlib.machinery import SourceFileLoader
 
 # Helper to import sanity-cli as a module
 def load_sanity_cli():
+    if "sanity_cli" in sys.modules:
+        return sys.modules["sanity_cli"]
+        
     file_path = os.path.abspath("sanity-cli")
     # SourceFileLoader works even without .py extension
     loader = SourceFileLoader("sanity_cli", file_path)
@@ -139,3 +142,37 @@ class TestConfigSync:
             # We expect: mkdir -p ... and docker cp config/. ...
             docker_cmds = [args[0][0] for args in mock_run.call_args_list]
             assert any("docker cp config/." in cmd for cmd in docker_cmds)
+
+    def test_sync_config_safe_simulation(self):
+        """Test sync_config with a custom source directory (simulation)."""
+        import tempfile
+        import shutil
+        
+        # Create a temporary directory to act as the config source
+        with tempfile.TemporaryDirectory() as temp_config_dir:
+            # Create a dummy GEMINI.md in it
+            gemini_path = os.path.join(temp_config_dir, "GEMINI.md")
+            with open(gemini_path, "w") as f:
+                f.write("# Safe Simulation Test")
+                
+            with patch("sanity_cli.run_command") as mock_run, \
+                 patch("builtins.print"):
+                
+                # Call sync_config with the temp dir as source
+                sanity_cli.sync_config("safe-proj", "safe-container", "user", config_source=temp_config_dir)
+                
+                # Check that docker cp was called with the temp dir
+                docker_cmds = [args[0][0] for args in mock_run.call_args_list]
+                
+                # We expect: docker cp {temp_config_dir}/. safe-container:/home/user/.gemini/
+                expected_cp_part = f"docker cp {temp_config_dir}/."
+                
+                # Filter commands that are copy commands
+                cp_commands = [cmd for cmd in docker_cmds if "docker cp" in cmd]
+                
+                assert len(cp_commands) > 0, "No docker cp command found"
+                assert expected_cp_part in cp_commands[0], f"Expected source {temp_config_dir} in {cp_commands[0]}"
+                
+                # Also verify mkdir and chown calls
+                assert any("mkdir -p /home/user/.gemini" in cmd for cmd in docker_cmds)
+                assert any("chown -R user:user /home/user/.gemini" in cmd for cmd in docker_cmds)

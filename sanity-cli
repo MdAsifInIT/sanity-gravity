@@ -300,11 +300,11 @@ def generate_git_compose(username):
         
     return output_file
 
-def sync_config(project_name, container_name, username):
+def sync_config(project_name, container_name, username, config_source="config"):
     """Syncs Antigravity configuration to the container."""
     print_header("Configuration Sync")
     
-    config_dir = "config"
+    config_dir = config_source
     host_gemini_dir = os.path.expanduser("~/.gemini")
     
     # Check if project config exists
@@ -314,7 +314,7 @@ def sync_config(project_name, container_name, username):
             print_warning("Non-interactive mode detected. Skipping configuration initialization.")
             return
 
-        print_info("No project configuration found in ./config/")
+        print_info(f"No project configuration found in ./{config_dir}/")
         print(f"{Colors.BOLD}Select an option to initialize configuration:{Colors.ENDC}")
         print("  [A] Copy from Host (~/.gemini/) - Recommended")
         print("  [B] Create Empty (Initialize empty config)")
@@ -691,6 +691,63 @@ def upgrade(args):
     print_success("Upgrade complete.")
     status(args)
 
+def sync_config_cmd(args):
+    """Syncs configuration to running containers without restarting."""
+    target_project = getattr(args, "name", "sanity-gravity")
+    
+    projects_to_sync = []
+    if target_project == "sanity-gravity":
+        projects_to_sync = get_active_projects()
+        if not projects_to_sync:
+             print_info("No active managed projects found to sync.")
+             return
+    else:
+        # Check if target exists
+        active = get_active_projects()
+        if target_project in active:
+            projects_to_sync = [target_project]
+        else:
+            print_error(f"Project '{target_project}' is not active or managed.")
+            return
+
+    print_header("Syncing Configuration")
+    
+    # Get current host user as fallback/reference
+    host_uid, host_gid, host_user = get_uid_gid_user()
+    
+    for project in projects_to_sync:
+        try:
+            # We need to find the running container and the user inside it.
+            # Get Env to find USER
+            env_vars = get_project_env(project)
+            username = env_vars.get("HOST_USER", host_user)
+            
+            # Find running variant container
+            # We prioritize variants in order: core, kasm, vnc
+            target_variant = None
+            for v in VARIANTS:
+                container_name = f"{project}-{v}-1"
+                # Check if running
+                try:
+                    out = run_command(f"docker inspect -f '{{{{.State.Running}}}}' {container_name}", capture=True, check=False)
+                    if out == "true":
+                        target_variant = v
+                        break
+                except:
+                    pass
+            
+            if target_variant:
+                container_name = f"{project}-{target_variant}-1"
+                print_info(f"Syncing {project} ({container_name})...")
+                sync_config(project, container_name, username)
+            else:
+                print_warning(f"Project {project} has no running containers. Skipping.")
+                
+        except Exception as e:
+            print_error(f"Failed to sync {project}: {e}")
+
+    print_success("Sync complete.")
+
 def status(args):
     """Shows status of sandbox containers."""
     target_project = getattr(args, "name", "sanity-gravity")
@@ -858,6 +915,11 @@ def main():
     parser_upgrade = subparsers.add_parser("upgrade", help="Upgrade legacy containers to managed status")
     parser_upgrade.add_argument("--name", "-n", default="sanity-gravity", help="Specific project to upgrade")
     parser_upgrade.set_defaults(func=upgrade)
+    
+    # Sync Config Command
+    parser_sync = subparsers.add_parser("sync_config", help="Sync configuration to running containers")
+    parser_sync.add_argument("--name", "-n", default="sanity-gravity", help="Specific project to sync")
+    parser_sync.set_defaults(func=sync_config_cmd)
     
     # Test Command
     parser_test = subparsers.add_parser("test", help="Run test suite")
