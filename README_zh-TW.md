@@ -70,6 +70,8 @@
   #   --skip-check        (跳過前置檢查)
   #   --workspace [path]  (設定自訂工作區路徑, 預設: ./workspace)
   #   --name [name]       (設定多重實例的專案名稱, 預設: sanity-gravity)
+  #   --cpus [limit]      (限制 CPU, 例如 1.5, 預設: 無限制)
+  #   --memory [limit]    (限制記憶體, 例如 4G, 預設: 無限制)
 
 ./sanity-cli up -v core     # 建立並啟動容器 (別名: run)
 ./sanity-cli down           # 停止並移除容器
@@ -77,6 +79,8 @@
 ./sanity-cli start          # 啟動已停止的容器
 ./sanity-cli restart        # 重啟容器
 ./sanity-cli status         # 檢查容器狀態 (含舊版容器偵測)
+./sanity-cli shell          # 進入容器 Shell (zsh)
+./sanity-cli open           # 啟動網頁介面 (Kasm/VNC)
 ./sanity-cli upgrade        # 智慧升級 (自動遷移舊版容器)
 ./sanity-cli sync_config    # 同步設定至運行中容器 (Runtime Sync)
 ```

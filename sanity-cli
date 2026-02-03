@@ -6,6 +6,7 @@ import sys
 import shutil
 import time
 import socket
+import webbrowser
 
 # Configuration
 COMPOSE_FILE = "docker-compose.yml"
@@ -144,6 +145,14 @@ def up(args):
         print_info("Git Context Sharing Enabled")
 
     password = args.password
+
+    # Resource Limits (Inject via compose override)
+    resource_compose = None
+    if args.cpus or args.memory:
+        resource_compose = generate_resource_compose(args.cpus, args.memory)
+        if resource_compose:
+             compose_files += f" -f {resource_compose}"
+             print_info("Resource Limits Applied")
 
 
     # Auto-Port Assignment Logic
@@ -294,6 +303,39 @@ def generate_git_compose(username):
     config_dir = "config"
     os.makedirs(config_dir, exist_ok=True)
     output_file = os.path.join(config_dir, "docker-compose.git.yml")
+    
+    with open(output_file, "w") as f:
+        f.write(content)
+        
+    with open(output_file, "w") as f:
+        f.write(content)
+        
+    return output_file
+
+def generate_resource_compose(cpus, memory):
+    """Generates a docker-compose override to apply resource limits."""
+    content = "services:\n"
+    
+    limits_block = "    deploy:\n      resources:\n        limits:\n"
+    has_limits = False
+    
+    if cpus:
+        limits_block += f"          cpus: '{cpus}'\n"
+        has_limits = True
+    if memory:
+        limits_block += f"          memory: '{memory}'\n"
+        has_limits = True
+        
+    if not has_limits:
+        return None
+        
+    for variant in VARIANTS:
+        content += f"  {variant}:\n"
+        content += limits_block
+
+    config_dir = "config"
+    os.makedirs(config_dir, exist_ok=True)
+    output_file = os.path.join(config_dir, "docker-compose.resources.yml")
     
     with open(output_file, "w") as f:
         f.write(content)
@@ -748,6 +790,134 @@ def sync_config_cmd(args):
 
     print_success("Sync complete.")
 
+def shell_cmd(args):
+    """Execs into the shell of a running container."""
+    project_name = args.name
+    
+    # Identify project
+    if project_name == "sanity-gravity":
+        active = get_active_projects()
+        if not active:
+             print_error("No active projects found.")
+             return
+        if len(active) > 1:
+            print_info(f"Multiple active projects: {', '.join(active)}")
+            print_warning(f"Defaulting to first active project: {active[0]}")
+            # Or ask user? For CLI simplicity, maybe default or fail.
+            # Let's default to first one.
+            project_name = active[0]
+        else:
+            project_name = active[0]
+
+    # Find active variant and container
+    target_variant = None
+    container_name = None
+    for v in VARIANTS:
+        cname = f"{project_name}-{v}-1"
+        try:
+             out = run_command(f"docker inspect -f '{{{{.State.Running}}}}' {cname}", capture=True, check=False)
+             if out == "true":
+                 target_variant = v
+                 container_name = cname
+                 break
+        except:
+             pass
+    
+    if not container_name:
+         print_error(f"No running containers found for {project_name}.")
+         return
+         
+    # Get user
+    env = get_project_env(project_name)
+    user = env.get("HOST_USER", "developer") 
+    
+    print_info(f"Entering shell for {project_name} ({container_name}) as {user}...")
+    
+    # Try zsh first, then bash
+    cmd = f"docker exec -it -u {user} {container_name} zsh"
+    try:
+        # Use simple os.system or subprocess.call to ensure TTY builds correctly
+        subprocess.check_call(cmd, shell=True)
+    except subprocess.CalledProcessError:
+        print_warning("zsh failed, falling back to bash...")
+        cmd = f"docker exec -it -u {user} {container_name} bash"
+        subprocess.call(cmd, shell=True)
+
+def open_cmd(args):
+    """Opens the active project's web interface."""
+    project_name = args.name
+    
+    # Identify project
+    if project_name == "sanity-gravity":
+        active = get_active_projects()
+        if not active:
+             print_error("No active projects found.")
+             return
+        project_name = active[0]
+
+    # Find active variant
+    target_variant = None
+    container_name = None
+    for v in VARIANTS:
+        cname = f"{project_name}-{v}-1"
+        try:
+             out = run_command(f"docker inspect -f '{{{{.State.Running}}}}' {cname}", capture=True, check=False)
+             if out == "true":
+                 target_variant = v
+                 container_name = cname
+                 break
+        except:
+             pass
+             
+    if not container_name:
+         print_error(f"No running containers found for {project_name}.")
+         return
+
+    # Determine URL
+    url = None
+    
+    # We need to resolve ports again if they were ephemeral
+    # But usually get_project_env gives us the ENV vars stored in the container config.
+    # HOWEVER, ephemeral ports are mapped on host, the ENV var inside might say "0".
+    # Wait, in 'up', we update env_vars with resolved ports? No, we update python var but restart container?
+    # No, 'up' logic runs with '0' env var, then queries 'docker port' to show info.
+    # The container itself thinks it's 0? Yes.
+    # So we must query `docker port` to find the real host port.
+    
+    compose_file_arg = f"-f {COMPOSE_FILE}" 
+    # Determine gpu/git files? Just using base file usually works for port query if project name matches
+    
+    def resolve_port(service, internal):
+        try:
+            # We must use project name
+            out = run_command(f"docker compose -p {project_name} {compose_file_arg} port {service} {internal}", capture=True, check=False)
+            if ":" in out:
+                return out.split(":")[-1]
+        except:
+            pass
+        return None
+
+    if target_variant == "kasm":
+        port = resolve_port("kasm", "8444")
+        if port:
+            url = f"https://localhost:{port}"
+            
+    elif target_variant == "vnc":
+        # Prefer noVNC
+        port = resolve_port("vnc", "6901")
+        if port:
+            url = f"http://localhost:{port}/vnc.html"
+            
+    elif target_variant == "core":
+        print_warning(f"Variant '{target_variant}' has no web interface.")
+        return
+
+    if url:
+        print_success(f"Opening {url} ...")
+        webbrowser.open(url)
+    else:
+        print_error("Could not resolve accessible URL.")
+
 def status(args):
     """Shows status of sandbox containers."""
     target_project = getattr(args, "name", "sanity-gravity")
@@ -866,6 +1036,8 @@ def main():
     parser_up.add_argument("--skip-check", action="store_true", help="Skip prerequisite checks")
     parser_up.add_argument("--workspace", "-w", default=None, help="Path to workspace directory (default: ./workspace)")
     parser_up.add_argument("--name", "-n", default="sanity-gravity", help="Project name for multi-instance support (default: sanity-gravity)")
+    parser_up.add_argument("--cpus", default=None, help="CPU limit (e.g. 1.5)")
+    parser_up.add_argument("--memory", default=None, help="Memory limit (e.g. 4G)")
     parser_up.set_defaults(func=up)
 
     # Run Command (Alias for Up)
@@ -880,6 +1052,8 @@ def main():
     parser_run.add_argument("--skip-check", action="store_true", help="Skip prerequisite checks")
     parser_run.add_argument("--workspace", "-w", default=None, help="Path to workspace directory (default: ./workspace)")
     parser_run.add_argument("--name", "-n", default="sanity-gravity", help="Project name for multi-instance support (default: sanity-gravity)")
+    parser_run.add_argument("--cpus", default=None, help="CPU limit (e.g. 1.5)")
+    parser_run.add_argument("--memory", default=None, help="Memory limit (e.g. 4G)")
     parser_run.set_defaults(func=up)
 
     # Down Command (formerly Stop)
@@ -920,6 +1094,16 @@ def main():
     parser_sync = subparsers.add_parser("sync_config", help="Sync configuration to running containers")
     parser_sync.add_argument("--name", "-n", default="sanity-gravity", help="Specific project to sync")
     parser_sync.set_defaults(func=sync_config_cmd)
+
+    # Shell Command
+    parser_shell = subparsers.add_parser("shell", help="Enter container shell")
+    parser_shell.add_argument("--name", "-n", default="sanity-gravity", help="Project name")
+    parser_shell.set_defaults(func=shell_cmd)
+
+    # Open Command
+    parser_open = subparsers.add_parser("open", help="Open web interface")
+    parser_open.add_argument("--name", "-n", default="sanity-gravity", help="Project name")
+    parser_open.set_defaults(func=open_cmd)
     
     # Test Command
     parser_test = subparsers.add_parser("test", help="Run test suite")

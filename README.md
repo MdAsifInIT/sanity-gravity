@@ -69,14 +69,21 @@ The project includes a helper script `sanity-cli` to manage the lifecycle:
   #   --gpu               (Enable NVIDIA GPU support)
   #   --skip-check        (Skip prerequisite checks)
   #   --workspace [path]  (Set custom workspace path, default: ./workspace)
+  #   --workspace [path]  (Set custom workspace path, default: ./workspace)
   #   --name [name]       (Set project name for multi-instance, default: sanity-gravity)
+  #   --cpus [limit]      (Limit CPUs, e.g. 1.5, default: unlimited)
+  #   --memory [limit]    (Limit Memory, e.g. 4G, default: unlimited)
 
 ./sanity-cli up -v core     # Start/Create containers (alias: run)
 ./sanity-cli down           # Stop and REMOVE containers
 ./sanity-cli stop           # Stop containers (preserve data)
 ./sanity-cli start          # Start stopped containers
 ./sanity-cli restart        # Restart containers
+./sanity-cli start          # Start stopped containers
+./sanity-cli restart        # Restart containers
 ./sanity-cli status         # Check container status (and legacy containers)
+./sanity-cli shell          # Enter container shell (zsh)
+./sanity-cli open           # Open web interface (Kasm/VNC)
 ./sanity-cli upgrade        # Smart upgrade (migrates legacy containers)
 ./sanity-cli sync_config    # Sync config to running containers (runtime)
 ```

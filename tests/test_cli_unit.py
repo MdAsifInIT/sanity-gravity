@@ -176,3 +176,79 @@ class TestConfigSync:
                 # Also verify mkdir and chown calls
                 assert any("mkdir -p /home/user/.gemini" in cmd for cmd in docker_cmds)
                 assert any("chown -R user:user /home/user/.gemini" in cmd for cmd in docker_cmds)
+
+class TestRunResourceArgs:
+    """Tests for resource quota arguments."""
+    
+    @patch("sanity_cli.run_command")
+    @patch("sanity_cli.get_uid_gid_user", return_value=(1000, 1000, "dev"))
+    @patch("sanity_cli.generate_resource_compose")
+    def test_run_with_resources(self, mock_gen_res, mock_user, mock_run):
+        # Setup mocks
+        mock_gen_res.return_value = "config/docker-compose.resources.yml"
+        
+        args = MagicMock()
+        args.variant = "core"
+        args.cpus = "1.5"
+        args.memory = "2G"
+        # set other defaults
+        args.skip_check = True
+        args.ssh_port = "2222"
+        args.kasm_port = "8444"
+        args.vnc_port = "5901"
+        args.novnc_port = "6901"
+        args.workspace = None
+        args.name = "sanity-gravity"
+        args.gpu = False
+        args.password = "pass"
+        
+        sanity_cli.up(args)
+        
+        # Verify generate_resource_compose called
+        mock_gen_res.assert_called_with("1.5", "2G")
+        
+        # Verify docker compose command includes the new file
+        # We need to check all calls to run_command
+        # Look for the one that has 'up -d'
+        up_calls = [args[0][0] for args in mock_run.call_args_list if "up -d" in args[0][0]]
+        assert len(up_calls) > 0
+        cmd = up_calls[0]
+        assert "-f config/docker-compose.resources.yml" in cmd
+
+class TestNewCommands:
+    """Tests for shell and open commands."""
+    
+    @patch("sanity_cli.run_command")
+    @patch("subprocess.check_call")
+    def test_shell_command(self, mock_check_call, mock_run):
+        # Mock finding container
+        mock_run.return_value = "true" # docker inspect running
+        
+        args = MagicMock()
+        args.name = "sanity-gravity"
+        
+        with patch("sanity_cli.get_active_projects", return_value=["sanity-gravity"]):
+            sanity_cli.shell_cmd(args)
+            
+            # Check if docker exec was called
+            # We assume it finds sanity-gravity-core-1 (first in VARIANTS)
+            # developer is default user
+            expected_cmd = "docker exec -it -u developer sanity-gravity-core-1 zsh"
+            mock_check_call.assert_called_with(expected_cmd, shell=True)
+
+    @patch("sanity_cli.run_command")
+    @patch("webbrowser.open")
+    def test_open_command_kasm(self, mock_browser, mock_run):
+         def run_side_effect(cmd, **kwargs):
+            if "core-1" in cmd: return "false"
+            if "kasm-1" in cmd: return "true"
+            if "port kasm 8444" in cmd: return "0.0.0.0:12345"
+            return ""
+         mock_run.side_effect = run_side_effect
+         
+         args = MagicMock()
+         args.name = "sanity-gravity"
+         with patch("sanity_cli.get_active_projects", return_value=["sanity-gravity"]):
+             sanity_cli.open_cmd(args)
+             
+             mock_browser.assert_called_with("https://localhost:12345")

@@ -70,6 +70,8 @@
   #   --skip-check        (前提条件のチェックをスキップ)
   #   --workspace [path]  (カスタムワークスペースパスを設定, デフォルト: ./workspace)
   #   --name [name]       (マルチインスタンス用のプロジェクト名を設定, デフォルト: sanity-gravity)
+  #   --cpus [limit]      (CPU制限, 例: 1.5, デフォルト: 無制限)
+  #   --memory [limit]    (メモリ制限, 例: 4G, デフォルト: 無制限)
 
 ./sanity-cli up -v core     # コンテナを作成して起動 (エイリアス: run)
 ./sanity-cli down           # コンテナを停止して削除
@@ -77,6 +79,8 @@
 ./sanity-cli start          # 停止したコンテナを起動
 ./sanity-cli restart        # コンテナを再起動
 ./sanity-cli status         # コンテナの状態を確認 (レガシーコンテナ含む)
+./sanity-cli shell          # コンテナシェルに入る (zsh)
+./sanity-cli open           # Webインターフェースを開く (Kasm/VNC)
 ./sanity-cli upgrade        # スマートアップグレード (レガシーコンテナを移行)
 ./sanity-cli sync_config    # 設定を実行中のコンテナに同期 (Runtime Sync)
 ```
