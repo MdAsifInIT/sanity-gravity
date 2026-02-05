@@ -226,6 +226,7 @@ class TestNewCommands:
         
         args = MagicMock()
         args.name = "sanity-gravity"
+        args.user = None # Default behavior
         
         with patch("sanity_cli.get_active_projects", return_value=["sanity-gravity"]):
             sanity_cli.shell_cmd(args)
@@ -234,6 +235,23 @@ class TestNewCommands:
             # We assume it finds sanity-gravity-core-1 (first in VARIANTS)
             # developer is default user
             expected_cmd = "docker exec -it -u developer sanity-gravity-core-1 zsh"
+            mock_check_call.assert_called_with(expected_cmd, shell=True)
+
+    @patch("sanity_cli.run_command")
+    @patch("subprocess.check_call")
+    def test_shell_command_with_user(self, mock_check_call, mock_run):
+        # Mock finding container
+        mock_run.return_value = "true" 
+        
+        args = MagicMock()
+        args.name = "sanity-gravity"
+        args.user = "root" # Custom user
+        
+        with patch("sanity_cli.get_active_projects", return_value=["sanity-gravity"]):
+            sanity_cli.shell_cmd(args)
+            
+            # Verify user passed to docker exec
+            expected_cmd = "docker exec -it -u root sanity-gravity-core-1 zsh"
             mock_check_call.assert_called_with(expected_cmd, shell=True)
 
     @patch("sanity_cli.run_command")

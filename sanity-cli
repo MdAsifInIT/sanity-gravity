@@ -829,7 +829,8 @@ def shell_cmd(args):
          
     # Get user
     env = get_project_env(project_name)
-    user = env.get("HOST_USER", "developer") 
+    env = get_project_env(project_name)
+    user = args.user if args.user else env.get("HOST_USER", "developer") 
     
     print_info(f"Entering shell for {project_name} ({container_name}) as {user}...")
     
@@ -1098,6 +1099,7 @@ def main():
     # Shell Command
     parser_shell = subparsers.add_parser("shell", help="Enter container shell")
     parser_shell.add_argument("--name", "-n", default="sanity-gravity", help="Project name")
+    parser_shell.add_argument("--user", "-u", default=None, help="User to login as (default: developer)")
     parser_shell.set_defaults(func=shell_cmd)
 
     # Open Command
