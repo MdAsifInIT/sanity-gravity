@@ -138,6 +138,15 @@ def up(args):
         compose_files += " -f docker-compose.gpu.yml"
         print_info("GPU Support Enabled")
 
+        print_info("GPU Support Enabled")
+    
+    # Custom Image Support
+    if args.image:
+        # Determine which environment variable to set based on variant
+        env_var_name = f"SANITY_IMAGE_{target.upper()}"
+        os.environ[env_var_name] = args.image
+        print_info(f"Using Custom Image: {args.image} for {target}")
+
     # Git Context Sharing
     git_compose = generate_git_compose(username)
     if git_compose:
@@ -919,6 +928,68 @@ def open_cmd(args):
     else:
         print_error("Could not resolve accessible URL.")
 
+def snapshot_cmd(args):
+    """Snapshots a running container to a new image."""
+    project_name = args.name
+    variant = args.variant
+    tag = args.tag
+    
+    # Identify active projects
+    if project_name == "sanity-gravity":
+        active = get_active_projects()
+        if not active:
+             print_error("No active projects found.")
+             print("Tip: Use --name <project> to specify a project.")
+             return
+        if len(active) > 1:
+             print_error(f"Multiple active projects found: {', '.join(active)}")
+             print("Please specify a project with --name.")
+             return
+        project_name = active[0]
+
+    # If variant not specified, try to detect
+    container_id = None
+    target_variant = None
+    
+    if variant:
+        target_variant = variant
+        container_name = f"{project_name}-{variant}-1"
+        try:
+             # Check if exists (running or stopped)
+             run_command(f"docker inspect {container_name}", capture=True)
+             container_id = container_name
+        except:
+             print_error(f"Container {container_name} not found.")
+             return
+    else:
+        # Auto-detect
+        for v in VARIANTS:
+            cname = f"{project_name}-{v}-1"
+            try:
+                run_command(f"docker inspect {cname}", capture=True)
+                container_id = cname
+                target_variant = v
+                break # Found one
+            except:
+                pass
+        
+        if not container_id:
+            print_error(f"No containers found for project '{project_name}'.")
+            return
+            
+    print_header(f"Snapshotting {container_id} -> {tag}")
+    
+    try:
+        # Commit the container
+        # We pause the container by default (docker commit default behavior)
+        run_command(f"docker commit {container_id} {tag}")
+        print_success(f"Snapshot created: {tag}")
+        print(f"\n{Colors.OKBLUE}To use this snapshot:{Colors.ENDC}")
+        print(f"  ./sanity-cli run -v {target_variant} --name new-env --image {tag}")
+        
+    except Exception as e:
+        print_error(f"Snapshot failed: {e}")
+
 def status(args):
     """Shows status of sandbox containers."""
     target_project = getattr(args, "name", "sanity-gravity")
@@ -1039,6 +1110,7 @@ def main():
     parser_up.add_argument("--name", "-n", default="sanity-gravity", help="Project name for multi-instance support (default: sanity-gravity)")
     parser_up.add_argument("--cpus", default=None, help="CPU limit (e.g. 1.5)")
     parser_up.add_argument("--memory", default=None, help="Memory limit (e.g. 4G)")
+    parser_up.add_argument("--image", default=None, help="Use custom base image (Snapshot)")
     parser_up.set_defaults(func=up)
 
     # Run Command (Alias for Up)
@@ -1055,6 +1127,7 @@ def main():
     parser_run.add_argument("--name", "-n", default="sanity-gravity", help="Project name for multi-instance support (default: sanity-gravity)")
     parser_run.add_argument("--cpus", default=None, help="CPU limit (e.g. 1.5)")
     parser_run.add_argument("--memory", default=None, help="Memory limit (e.g. 4G)")
+    parser_run.add_argument("--image", default=None, help="Use custom base image (Snapshot)")
     parser_run.set_defaults(func=up)
 
     # Down Command (formerly Stop)
@@ -1106,6 +1179,13 @@ def main():
     parser_open = subparsers.add_parser("open", help="Open web interface")
     parser_open.add_argument("--name", "-n", default="sanity-gravity", help="Project name")
     parser_open.set_defaults(func=open_cmd)
+
+    # Snapshot Command
+    parser_snapshot = subparsers.add_parser("snapshot", help="Create a perfect copy (snapshot) of a container")
+    parser_snapshot.add_argument("--name", "-n", default="sanity-gravity", help="Project name")
+    parser_snapshot.add_argument("--variant", "-v", default=None, choices=VARIANTS, help="Variant to snapshot (optional if only one)")
+    parser_snapshot.add_argument("--tag", "-t", required=True, help="Tag for the new image (e.g. my-backup:v1)")
+    parser_snapshot.set_defaults(func=snapshot_cmd)
     
     # Test Command
     parser_test = subparsers.add_parser("test", help="Run test suite")

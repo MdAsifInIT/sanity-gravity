@@ -133,6 +133,19 @@ To stop or check the status of a specific instance:
 ./sanity-cli down --name dev-02   # Destroy (remove container)
 ```
 
+### 📸 Container Snapshots (Perfect Copy)
+
+Stop repeating setup steps! You can "freeze" your current container state into a new image and use it as a base for future instances.
+
+1.  **Create a Snapshot**:
+    ```bash
+    ./sanity-cli snapshot --name my-base-env --tag my-base:v1
+    ```
+2.  **Use It**:
+    ```bash
+    ./sanity-cli run -v core --name new-project --image my-base:v1
+    ```
+
 ## Variants
 
 | Variant    | Tech Stack       | Best For                            | Access                                     |

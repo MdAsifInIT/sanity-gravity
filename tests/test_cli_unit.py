@@ -201,6 +201,7 @@ class TestRunResourceArgs:
         args.name = "sanity-gravity"
         args.gpu = False
         args.password = "pass"
+        args.image = None
         
         sanity_cli.up(args)
         
@@ -270,3 +271,56 @@ class TestNewCommands:
              sanity_cli.open_cmd(args)
              
              mock_browser.assert_called_with("https://localhost:12345")
+
+class TestSnapshot:
+    """Tests for snapshot and image features."""
+
+    @patch("sanity_cli.run_command")
+    def test_snapshot_command(self, mock_run):
+        args = MagicMock()
+        args.name = "my-proj"
+        args.variant = "core"
+        args.tag = "my-image:v1"
+        
+        sanity_cli.snapshot_cmd(args)
+        
+        # Verify docker inspect called
+        # Verify docker commit called
+        
+        # We expect inspect to verify container exists
+        inspect_call = [args[0][0] for args in mock_run.call_args_list if "docker inspect" in args[0][0]]
+        assert len(inspect_call) > 0
+        
+        # Check commit
+        commit_calls = [args[0][0] for args in mock_run.call_args_list if "docker commit" in args[0][0]]
+        assert len(commit_calls) > 0
+        
+        expected_commit = "docker commit my-proj-core-1 my-image:v1"
+        assert expected_commit in commit_calls[0]
+
+    @patch("sanity_cli.run_command")
+    @patch("sanity_cli.get_uid_gid_user", return_value=(1000, 1000, "dev"))
+    def test_up_with_custom_image(self, mock_user, mock_run):
+        # Override os.environ to avoid polluting actual env
+        with patch.dict(os.environ, {}, clear=True):
+            args = MagicMock()
+            args.variant = "core"
+            # set other defaults
+            args.skip_check = True
+            args.ssh_port = "2222"
+            args.kasm_port = "8444"
+            args.vnc_port = "5901"
+            args.novnc_port = "6901"
+            args.workspace = None
+            args.name = "sanity-gravity"
+            args.gpu = False
+            args.password = "pass"
+            args.cpus = None
+            args.memory = None
+            
+            # The key arg
+            args.image = "my-custom:v1"
+            
+            sanity_cli.up(args)
+            
+            assert os.environ.get("SANITY_IMAGE_CORE") == "my-custom:v1"
