@@ -9,7 +9,18 @@ VNC_PW=${VNC_PW}
 export HOME=${HOME}
 
 # Cleanup locks
+# Cleanup locks
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
+
+# ------------------------------------------------------------------
+# Chrome Cleanup Strategy (For Snapshot Support)
+# ------------------------------------------------------------------
+export CHROME_CONFIG="$HOME/.config/google-chrome"
+if [ -f /usr/local/bin/chrome-cleanup.sh ]; then
+    source /usr/local/bin/chrome-cleanup.sh
+else
+    echo "Warning: chrome-cleanup.sh not found!"
+fi
 
 # Setup VNC Directory
 mkdir -p $HOME/.vnc

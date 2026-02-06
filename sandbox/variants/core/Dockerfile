@@ -79,8 +79,9 @@ RUN locale-gen en_US.UTF-8
 # Copy Rootfs (Configuration & Scripts)
 COPY rootfs /
 
-# Setup Entrypoint
-RUN chmod +x /usr/local/bin/entrypoint.sh
+# Setup Entrypoint & Scripts
+RUN chmod +x /usr/local/bin/entrypoint.sh && \
+    chmod +x /usr/local/bin/chrome-cleanup.sh
 
 # Expose SSH
 EXPOSE 22
