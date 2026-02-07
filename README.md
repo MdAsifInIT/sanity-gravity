@@ -19,6 +19,7 @@
 *   **🚀 Zero Config**: Pre-installed with **Antigravity IDE**, Google Chrome, Git, and essential dev tools.
 *   **🔌 Seamless IO**: Automatically maps your host user's UID/GID, preventing the common "root-owned files" permission hell when mounting workspaces.
 *   **🧩 Multi-Instance Capable**: Run multiple isolated sandboxes simultaneously (e.g., separate environments for Dev, Test, and Prod) with automatic port assignment.
+*   **📸 Perfect Snapshots**: Save the exact state of your container (filesystem, installed apps, active logins) as a Docker image. Fork new projects from this frozen state instantly.
 
 ## Quick Start
 
@@ -86,6 +87,7 @@ The project includes a helper script `sanity-cli` to manage the lifecycle:
 ./sanity-cli open           # Open web interface (Kasm/VNC)
 ./sanity-cli upgrade        # Smart upgrade (migrates legacy containers)
 ./sanity-cli sync_config    # Sync config to running containers (runtime)
+./sanity-cli snapshot       # Create a snapshot of a container
 ```
 
 ### Configuration Sync
