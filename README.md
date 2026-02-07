@@ -42,7 +42,7 @@
 
 3.  Run the KasmVNC variant (Recommended):
     ```bash
-    ./sanity-cli run -v kasm --password mysecret
+    ./sanity-cli up -v kasm --password mysecret
     ```
 
 4.  **Access the Desktop**:
@@ -137,13 +137,21 @@ To stop or check the status of a specific instance:
 
 Stop repeating setup steps! You can "freeze" your current container state into a new image and use it as a base for future instances.
 
+**Scenario**: You have manually installed a complex environment or logged into web services in your `my-base-env` container, and you want to fork a new experiment `my-new-project` from this exact state.
+
 1.  **Create a Snapshot**:
+    This will pause the container, commit it to a new Docker image, and verify integrity.
     ```bash
-    ./sanity-cli snapshot --name my-base-env --tag my-base:v1
+    ./sanity-cli snapshot --name my-base-env --tag my-verified-state:v1
     ```
-2.  **Use It**:
+
+2.  **Use It (Fork)**:
+    Start a new project using the snapshot as a base.
+    > **Note**: You must specify the variant (`-v kasm` or `-v vnc`) to ensure the correct desktop environment loads, even when using a custom image.
+    > **Warning**: Starting from a snapshot will **reset the Antigravity Agent's browser profile** (cookies, sessions) to ensure stability.
     ```bash
-    ./sanity-cli run -v core --name new-project --image my-base:v1
+    # Start new instance 'my-new-project' from the snapshot
+    ./sanity-cli up -v kasm --name my-new-project --image my-verified-state:v1
     ```
 
 ## Variants
