@@ -104,5 +104,20 @@ fi
 echo "Starting DBus System Daemon..."
 dbus-daemon --system --fork
 
+# Cleanup Stale Antigravity Runtime State (from potential snapshots)
+# This prevents socket/lock conflicts if the container was created from a running snapshot
+# We need to clean both the socket dir and the browser profile (which contains SingletonLock)
+
+ANTIGRAVITY_DIRS=(
+    "/home/$USER_NAME/.gemini/antigravity-browser-profile"
+)
+
+for dir in "${ANTIGRAVITY_DIRS[@]}"; do
+    if [ -d "$dir" ]; then
+        echo "Cleaning up stale Antigravity state at $dir..."
+        rm -rf "$dir"
+    fi
+done
+
 # Execute CMD (Supervisord)
 exec "$@"
