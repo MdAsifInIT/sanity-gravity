@@ -11,6 +11,13 @@ import webbrowser
 # Configuration
 COMPOSE_FILE = "docker-compose.yml"
 VARIANTS = ["core", "kasm", "vnc"]
+# Add lib to path
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+try:
+    from proxy_manager import ProxyManager
+except ImportError:
+    # Fallback or silent fail if lib not found (should not happen in repo)
+    ProxyManager = None
 
 # ANSI Colors
 class Colors:
@@ -270,7 +277,46 @@ def generate_git_compose(username):
     
     home = os.path.expanduser("~")
     gitconfig = os.path.join(home, ".gitconfig")
-    ssh_auth_sock = os.environ.get("SSH_AUTH_SOCK")
+    ssh_auth_sock = None
+    
+    # Proxy Logic
+    if ProxyManager:
+        pm = ProxyManager()
+        if pm.is_enabled() and os.path.exists(pm.get_socket_path()):
+            ssh_auth_sock = pm.get_socket_path()
+            print_success(f"Using SSH Proxy ({ssh_auth_sock})")
+        else:
+            # Proxy not ready. Prompt user.
+            reason = "Unknown"
+            if not pm.is_enabled():
+                reason = "Service not enabled"
+            elif not os.path.exists(pm.get_socket_path()):
+                reason = f"Socket missing at {pm.get_socket_path()}"
+                
+            print_warning(f"SSH Proxy is NOT set up ({reason}).")
+            print_warning("Strict Policy: Git operations inside the container will NOT have access to your SSH keys.")
+            print_info("Without Proxy, the container cannot restart seamlessly if the host reboots.")
+            print_info("Do you want to enable SSH Proxy now? (Recommended)")
+            
+            # Interactive check
+            if sys.stdin.isatty():
+                choice = input(f"{Colors.BOLD}Enable SSH Proxy? [Y/n]: {Colors.ENDC}").strip().lower()
+                if choice in ["", "y", "yes"]:
+                    try:
+                        print_info("Setting up Proxy...")
+                        pm.setup()
+                        if pm.is_enabled():
+                            ssh_auth_sock = pm.get_socket_path()
+                            print_success(f"SSH Proxy enabled and selected.")
+                    except Exception as e:
+                        print_error(f"Failed to setup proxy: {e}")
+                else:
+                    print_warning("Skipping SSH Agent integration. Git inside container will require manual authentication.")
+            else:
+                 print_warning("Non-interactive mode: Skipping SSH Agent integration (Proxy required).")
+    else:
+        print_warning("ProxyManager not found. Skipping SSH Agent.")
+
     
     volumes = []
     environment = {}
@@ -282,13 +328,14 @@ def generate_git_compose(username):
     else:
         print_info(".gitconfig not found on host.")
     
+    # Only mount if we have a valid PROXY socket
     if ssh_auth_sock and os.path.exists(ssh_auth_sock):
         # Mount SSH Agent Socket
         volumes.append(f"      - {ssh_auth_sock}:/tmp/ssh-agent.sock")
         environment["SSH_AUTH_SOCK"] = "/tmp/ssh-agent.sock"
-        print_success(f"Found SSH Agent ({ssh_auth_sock})")
     else:
-        print_warning("SSH Agent not found. Git operations requiring SSH keys might fail.")
+        # Fallback to NOTHING (Strict Policy)
+        pass
         
     if not volumes:
         print_info("Git Context Sharing skipped (no config found).")
@@ -517,13 +564,6 @@ def run_compose_cmd(args, action, check_existence=False):
     # Recover Env
     env_vars = get_project_env(project_name)
     env_str = " ".join([f"{k}={v}" for k, v in env_vars.items()])
-    
-    # If we couldn't find the container (maybe it's already stopped or broken), 
-    # we might still want to try 'down' with default/empty vars just in case.
-    # But for 'down', if we found nothing, maybe there's nothing to down? 
-    # Not necessarily, 'docker compose down' also removes networks/volumes which might exist without containers.
-    # However, without the env vars, 'down' might not work perfectly if config differs.
-    # We'll proceed with what we have.
     
     print_header(f"{action.capitalize()}ing Sandbox ({project_name})")
     
@@ -1078,6 +1118,66 @@ def list_variants(args):
     for v in VARIANTS:
         print(f" - {Colors.BOLD}{v}{Colors.ENDC}")
 
+def proxy_setup_cmd(args):
+    """Sets up the SSH Proxy."""
+    if not ProxyManager:
+        print_error("ProxyManager library not found.")
+        return
+        
+    pm = ProxyManager()
+    print_header("Setting up SSH Proxy...")
+    try:
+        pm.setup()
+        print_success(f"SSH Proxy enabled at {pm.get_socket_path()}")
+        print_info("You can now run 'sanity-cli up' to use the proxy.")
+    except Exception as e:
+        print_error(f"Setup failed: {e}")
+
+def proxy_status_cmd(args):
+    """Checks SSH Proxy status."""
+    if not ProxyManager:
+        print_error("ProxyManager library not found.")
+        return
+
+    pm = ProxyManager()
+    status = pm.get_status()
+    
+    print_header("SSH Proxy Status")
+    
+    if status["setup"]:
+        print(f"  Service:    {Colors.OKGREEN}Enabled{Colors.ENDC}")
+    else:
+        print(f"  Service:    {Colors.FAIL}Not Setup{Colors.ENDC}")
+        
+    if status["active"]:
+        print(f"  Active:     {Colors.OKGREEN}Running{Colors.ENDC}")
+    else:
+        print(f"  Active:     {Colors.FAIL}Stopped{Colors.ENDC}")
+        
+    if status["socket_exists"]:
+        print(f"  Socket:     {Colors.OKGREEN}Present{Colors.ENDC} ({pm.get_socket_path()})")
+    else:
+        print(f"  Socket:     {Colors.FAIL}Missing{Colors.ENDC}")
+        
+    if status["agent_reachable"]:
+        print(f"  Agent:      {Colors.OKGREEN}Reachable{Colors.ENDC}")
+    else:
+        if status["error"]:
+             print(f"  Agent:      {Colors.FAIL}Unreachable ({status['error']}){Colors.ENDC}")
+        else:
+             print(f"  Agent:      {Colors.FAIL}Unreachable{Colors.ENDC}")
+
+def proxy_remove_cmd(args):
+    """Removes the SSH Proxy."""
+    if not ProxyManager:
+        print_error("ProxyManager library not found.")
+        return
+
+    pm = ProxyManager()
+    print_header("Removing SSH Proxy...")
+    pm.remove()
+    print_success("SSH Proxy service and socket removed.")
+
 def main():
     parser = argparse.ArgumentParser(description="Antigravity Sandbox CLI")
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
@@ -1187,10 +1287,25 @@ def main():
     parser_snapshot.add_argument("--tag", "-t", required=True, help="Tag for the new image (e.g. my-backup:v1)")
     parser_snapshot.set_defaults(func=snapshot_cmd)
     
+    # Proxy Command
+    parser_proxy = subparsers.add_parser("proxy", help="Manage SSH Agent Socket Proxy")
+    proxy_subparsers = parser_proxy.add_subparsers(dest="proxy_command", required=True)
+    
+    proxy_setup = proxy_subparsers.add_parser("setup", help="Setup and enable SSH Proxy")
+    proxy_setup.set_defaults(func=proxy_setup_cmd)
+    
+    proxy_status = proxy_subparsers.add_parser("status", help="Check SSH Proxy status")
+    proxy_status.set_defaults(func=proxy_status_cmd)
+    
+    proxy_remove = proxy_subparsers.add_parser("remove", help="Disable and remove SSH Proxy")
+    proxy_remove.set_defaults(func=proxy_remove_cmd)
+    
     # Test Command
     parser_test = subparsers.add_parser("test", help="Run test suite")
     parser_test.add_argument("target", nargs="?", help="Specific test target (e.g., tests/test_core.py)")
     parser_test.set_defaults(func=test_suite)
+
+
 
     args = parser.parse_args()
     

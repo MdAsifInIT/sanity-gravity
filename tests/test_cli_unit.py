@@ -183,7 +183,11 @@ class TestRunResourceArgs:
     @patch("sanity_cli.run_command")
     @patch("sanity_cli.get_uid_gid_user", return_value=(1000, 1000, "dev"))
     @patch("sanity_cli.generate_resource_compose")
-    def test_run_with_resources(self, mock_gen_res, mock_user, mock_run):
+    @patch("sanity_cli.ProxyManager")
+    def test_run_with_resources(self, mock_pm, mock_gen_res, mock_user, mock_run):
+        # Mock Proxy disabled
+        mock_instance = mock_pm.return_value
+        mock_instance.is_enabled.return_value = False
         # Setup mocks
         mock_gen_res.return_value = "config/docker-compose.resources.yml"
         
@@ -300,7 +304,11 @@ class TestSnapshot:
 
     @patch("sanity_cli.run_command")
     @patch("sanity_cli.get_uid_gid_user", return_value=(1000, 1000, "dev"))
-    def test_up_with_custom_image(self, mock_user, mock_run):
+    @patch("sanity_cli.ProxyManager")
+    def test_up_with_custom_image(self, mock_pm, mock_user, mock_run):
+        # Mock Proxy disabled
+        mock_instance = mock_pm.return_value
+        mock_instance.is_enabled.return_value = False
         # Override os.environ to avoid polluting actual env
         with patch.dict(os.environ, {}, clear=True):
             args = MagicMock()
