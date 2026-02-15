@@ -116,6 +116,23 @@ Sanity-Gravity automatically detects and shares your host's Git configuration an
 
 When you run `./sanity-cli up`, it will automatically detect the agent and forward the socket.
 
+### 🔌 SSH Agent Proxy (Advanced)
+
+Sanity-Gravity includes a smart Proxy Manager that securely bridges the SSH Agent Socket between your host and the container. This allows `git` operations inside the container to authenticate using your host's private keys without copying them.
+
+Typically, `./sanity-cli up` handles the proxy startup and mounting automatically. However, in some cases (e.g., daemon crashes or path changes), you might need to manage it manually:
+
+```bash
+# Check Proxy status (includes socket path and connection test)
+./sanity-cli proxy status
+
+# Manually start/fix the Proxy service
+./sanity-cli proxy setup
+
+# Remove the Proxy service (cleans up Socket and Systemd Service)
+./sanity-cli proxy remove
+```
+
 ### 🧩 Multi-Instance Support
 
 **Need to run parallel tasks?** Sanity-Gravity supports running multiple isolated sandbox instances simultaneously. Just specify a unique project name using the `--name` argument.
