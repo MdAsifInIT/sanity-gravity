@@ -60,7 +60,7 @@ RUN mkdir -p /etc/apt/keyrings && \
 # Fix Antigravity IDE sandbox issue (Binary Wrapper Method)
 # We wrap the actual electron binary to ensure --no-sandbox is ALWAYS applied
 # regardless of how it's invoked (CLI, GUI, or subprocess)
-RUN mv /usr/share/antigravity/antigravity /usr/share/antigravity/antigravity-original && \
+RUN dpkg-divert --add --rename --divert /usr/share/antigravity/antigravity-original /usr/share/antigravity/antigravity && \
     echo '#!/bin/bash\nexec /usr/share/antigravity/antigravity-original --no-sandbox --disable-dev-shm-usage "$@"' > /usr/share/antigravity/antigravity && \
     chmod +x /usr/share/antigravity/antigravity && \
     if [ -f /usr/share/applications/antigravity.desktop ]; then \

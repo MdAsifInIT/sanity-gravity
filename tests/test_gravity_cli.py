@@ -1,0 +1,112 @@
+import subprocess
+import os
+import tempfile
+import stat
+
+GRAVITY_CLI_PATH = os.path.abspath("sandbox/rootfs/usr/local/bin/gravity-cli")
+
+def create_mock_command(dir_path, name, script_content):
+    path = os.path.join(dir_path, name)
+    with open(path, "w") as f:
+        f.write(script_content)
+    os.chmod(path, os.stat(path).st_mode | stat.S_IEXEC)
+
+def get_bypassed_script(tmpdir):
+    with open(GRAVITY_CLI_PATH, "r") as f:
+        content = f.read()
+    
+    # Bypass EUID check
+    content = content.replace('[ "$EUID" -ne 0 ]', 'false')
+    
+    # Divert persistent paths to tmpdir so we can test safely without root
+    sandbox_dir = os.path.join(tmpdir, "antigravity")
+    os.makedirs(sandbox_dir, exist_ok=True)
+    content = content.replace('/usr/share/antigravity', sandbox_dir)
+    
+    home_dir = os.path.join(tmpdir, "home")
+    os.makedirs(home_dir, exist_ok=True)
+    content = content.replace('/home', home_dir)
+
+    out_path = os.path.join(tmpdir, "gravity-cli-bypassed")
+    with open(out_path, "w") as f:
+        f.write(content)
+    os.chmod(out_path, os.stat(out_path).st_mode | stat.S_IEXEC)
+    return out_path
+
+def test_gravity_cli_update_ide_success():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        bypassed_cli = get_bypassed_script(tmpdir)
+        create_mock_command(tmpdir, "apt-get", "#!/bin/bash\necho \"Mock apt-get $@\"\nexit 0")
+        create_mock_command(tmpdir, "dpkg-divert", "#!/bin/bash\necho \"Mock dpkg-divert $@\"\nexit 0")
+        create_mock_command(tmpdir, "find", "#!/bin/bash\necho \"Mock find $@\"\nexit 0")
+        create_mock_command(tmpdir, "rm", "#!/bin/bash\necho \"Mock rm $@\"\nexit 0")
+        
+        env = os.environ.copy()
+        env["PATH"] = f"{tmpdir}:{env.get('PATH', '')}"
+        
+        result = subprocess.run(
+            ["bash", bypassed_cli, "update-ide"],
+            env=env,
+            capture_output=True,
+            text=True
+        )
+        
+        assert result.returncode == 0
+        assert "Updating package lists" in result.stdout
+        assert "Mock apt-get update -y" in result.stdout
+        assert "Mock apt-get install --only-upgrade -y antigravity" in result.stdout
+        assert "IDE update completed successfully" in result.stdout
+
+def test_gravity_cli_update_ide_failure():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        bypassed_cli = get_bypassed_script(tmpdir)
+        create_mock_command(tmpdir, "apt-get", "#!/bin/bash\nif [[ \"$*\" == *\"install\"* ]]; then exit 1; fi\nexit 0\n")
+        create_mock_command(tmpdir, "dpkg-divert", "#!/bin/bash\nexit 0")
+        
+        env = os.environ.copy()
+        env["PATH"] = f"{tmpdir}:{env.get('PATH', '')}"
+        
+        result = subprocess.run(
+            ["bash", bypassed_cli, "update-ide"],
+            env=env,
+            capture_output=True,
+            text=True
+        )
+        
+        assert result.returncode == 1
+        assert "Failed to update package." in result.stdout
+
+def test_gravity_cli_reinstall_ide_success():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        bypassed_cli = get_bypassed_script(tmpdir)
+        create_mock_command(tmpdir, "apt-get", "#!/bin/bash\necho \"Mock apt-get $@\"\nexit 0")
+        create_mock_command(tmpdir, "dpkg-divert", "#!/bin/bash\necho \"Mock dpkg-divert $@\"\nexit 0")
+        create_mock_command(tmpdir, "find", "#!/bin/bash\necho \"Mock find $@\"\nexit 0")
+        create_mock_command(tmpdir, "rm", "#!/bin/bash\necho \"Mock rm $@\"\nexit 0")
+        
+        env = os.environ.copy()
+        env["PATH"] = f"{tmpdir}:{env.get('PATH', '')}"
+        
+        result = subprocess.run(
+            ["bash", bypassed_cli, "reinstall-ide"],
+            env=env,
+            capture_output=True,
+            text=True
+        )
+        
+        assert result.returncode == 0
+        assert "Removing existing Antigravity IDE" in result.stdout
+        assert "Mock apt-get remove --purge -y antigravity" in result.stdout
+        assert "Mock apt-get install -y antigravity" in result.stdout
+        assert "IDE Reinstallation completed successfully." in result.stdout
+
+def test_gravity_cli_invalid_command():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        bypassed_cli = get_bypassed_script(tmpdir)
+        result = subprocess.run(
+            ["bash", bypassed_cli, "unknown-cmd"],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 1
+        assert "Usage: gravity-cli <command> [options]" in result.stdout

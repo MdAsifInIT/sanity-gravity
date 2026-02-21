@@ -1,0 +1,128 @@
+#!/bin/bash
+# gravity-cli: The Container-side Management Tool for Sanity-Gravity
+# This tool handles IDE updates, system repairs, and deep maintenance
+# from *inside* the sandbox environment, securely.
+
+set -e
+
+# ANSI Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+
+print_error() { echo -e "${RED}${BOLD}[ERROR]${NC} $1"; }
+print_success() { echo -e "${GREEN}${BOLD}[SUCCESS]${NC} $1"; }
+print_info() { echo -e "${BLUE}${BOLD}[INFO]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}${BOLD}[WARNING]${NC} $1"; }
+
+# Must be run as root
+if [ "$EUID" -ne 0 ]; then
+  print_error "gravity-cli must be run as root."
+  echo "Try with: sudo gravity-cli $@"
+  exit 1
+fi
+
+show_help() {
+    echo "Usage: gravity-cli <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  update-ide     Safely update the Antigravity IDE to the latest version."
+    echo "  reinstall-ide  Completely wipe and cleanly reinstall the Antigravity IDE."
+    echo "  help           Show this help message."
+    echo ""
+    echo "Note: This tool is meant to be run INSIDE the Sanity-Gravity container."
+}
+
+# Ensure divergence is still active
+ensure_wrapper_protection() {
+    print_info "Verifying wrapper protection mechanisms..."
+    if ! dpkg-divert --list | grep -q "/usr/share/antigravity/antigravity"; then
+         print_warning "dpkg-divert missing. Applying legacy wrapper protection..."
+         # Defensive check to re-apply dpkg-divert if it disappeared (from an old image)
+         if [ -f /usr/share/antigravity/antigravity-original ]; then
+             dpkg-divert --add --divert /usr/share/antigravity/antigravity-original /usr/share/antigravity/antigravity
+         else
+             dpkg-divert --add --rename --divert /usr/share/antigravity/antigravity-original /usr/share/antigravity/antigravity
+         fi
+         # Re-write wrapper just in case
+         echo '#!/bin/bash\nexec /usr/share/antigravity/antigravity-original --no-sandbox "$@"' > /usr/share/antigravity/antigravity
+         chmod +x /usr/share/antigravity/antigravity
+    fi
+}
+
+update_ide() {
+    print_info "Starting IDE Update Process..."
+    
+    ensure_wrapper_protection
+
+    print_info "Updating package lists..."
+    apt-get update -y
+    
+    # We only want to upgrade antigravity, but we do it safely
+    print_info "Upgrading Antigravity IDE (Only)..."
+    if apt-get install --only-upgrade -y antigravity; then
+        # Clean caches which might cause crashes after updates
+        print_info "Cleaning up old electron caches to prevent renderer crashes..."
+        find /home -name "GPUCache" -type d -exec rm -rf {} + 2>/dev/null || true
+        find /home -name ".config/antigravity" -type d -exec rm -rf {}/GPUCache + 2>/dev/null || true
+        
+        print_success "IDE update completed successfully."
+    else
+        print_error "Failed to update package."
+        exit 1
+    fi
+}
+
+reinstall_ide() {
+    echo -e "${RED}${BOLD}WARNING: This will completely wipe the existing Antigravity installation.${NC}"
+    echo "It is recommended to only run this if the IDE is crashing continuously."
+    
+    print_info "Removing existing Antigravity IDE..."
+    # Warning: when we purge, dpkg-divert might complain or get removed
+    apt-get remove --purge -y antigravity || true
+    
+    # Temporarily remove divergence for a clean slate
+    print_info "Resetting diversion rules for clean slate..."
+    dpkg-divert --rename --remove /usr/share/antigravity/antigravity || true
+    # Remove lingering original binary if any
+    rm -f /usr/share/antigravity/antigravity-original || true
+
+    print_info "Installing fresh Antigravity IDE..."
+    apt-get update -y
+    apt-get install -y antigravity
+
+    # Re-apply the protective wrapper
+    print_info "Re-applying Sandbox container protections..."
+    ensure_wrapper_protection
+
+    print_info "Cleaning up corrupted user configurations..."
+    find /home -type d -name ".config/antigravity" -exec rm -rf {} + 2>/dev/null || true
+
+    print_success "IDE Reinstallation completed successfully."
+}
+
+# Main Command Router
+if [ $# -eq 0 ]; then
+    show_help
+    exit 1
+fi
+
+case "$1" in
+    update-ide)
+        update_ide
+        ;;
+    reinstall-ide)
+        reinstall_ide
+        ;;
+    help)
+        show_help
+        ;;
+    *)
+        print_error "Unknown command: $1"
+        show_help
+        exit 1
+        ;;
+esac

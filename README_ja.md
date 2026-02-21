@@ -82,7 +82,8 @@
 ./sanity-cli status         # コンテナの状態を確認 (レガシーコンテナ含む)
 ./sanity-cli shell          # コンテナシェルに入る (zsh)
 ./sanity-cli open           # Webインターフェースを開く (Kasm/VNC)
-./sanity-cli upgrade        # スマートアップグレード (レガシーコンテナを移行)
+./sanity-cli ide <action>   # コンテナ内 IDE のメンテナンス (update/reinstall)
+./sanity-cli upgrade        # [レガシー] 古いコンテナを新アーキテクチャに移行する
 ./sanity-cli sync_config    # 設定を実行中のコンテナに同期 (Runtime Sync)
 ./sanity-cli snapshot       # コンテナのスナップショットを作成
 ```
@@ -169,6 +170,35 @@ Sanity-Gravity には、ホストとコンテナ間で SSH Agent ソケットを
     # スナップショットから新しいインスタンス 'my-new-project' を開始
     ./sanity-cli up -v kasm --name my-new-project --image my-verified-state:v1
     ```
+
+### 🛠️ IDE のメンテナンスと安全なアップグレード (Gravity-CLI)
+
+Sanity-Gravity には、`apt upgrade` による IDE の意図しないアンインストールやクラッシュを防ぐ防衛メカニズムが組み込まれています。
+
+ホストの管理とコンテナ内部のソフトウェア管理を厳密に分離しています：
+- **Host (ホスト側)**：`sanity-cli` がコンテナのライフサイクルを管理します。
+- **Inside (コンテナ内部)**：`gravity-cli` (組み込みスクリプト) が、`--no-sandbox` の保護を壊すことなく Antigravity IDE を安全に管理します。
+
+#### ホストから (Sanity-CLI の使用)
+IDE のクラッシュ (Google Gemini の強制更新などによる) が発生した場合、または IDE を安全に最新バージョンに更新したい場合は、ホストからリモートの `ide` コマンドを使用してください。
+> **注意**: `--name` パラメータは特定のインスタンスを対象とします (デフォルトは `sanity-gravity`)。複数の隔離された環境を並行して実行している場合は、メンテナンスするコンテナの名前を指定してください。
+
+```bash
+# apt を使用して Antigravity IDE を安全に最新パッケージに更新する
+./sanity-cli ide update --name sanity-gravity
+
+# 強力な修正：継続的なクラッシュを修正するため、完全に消去してクリーンインストールを行う
+./sanity-cli ide reinstall --name sanity-gravity
+```
+*(これらのコマンドは、対象コンテナ内で root として `gravity-cli` スクリプトを自動的に呼び出すため、ホスト環境をクリーンに保ちます。)*
+
+#### コンテナ内部で (Gravity-CLI の使用)
+すでにコンテナのシェルにいる場合 (例: `./sanity-cli shell` 経由) は、直接 `gravity-cli` ツールを使用できます。これらのコマンドは `root` 権限 (例: `sudo` を使用) で実行する必要があることに注意してください。
+
+```bash
+sudo gravity-cli update-ide    # 'sanity-cli ide update' と同等
+sudo gravity-cli reinstall-ide # 'sanity-cli ide reinstall' と同等
+```
 
 ## バリアント (Variants)
 

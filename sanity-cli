@@ -1178,6 +1178,58 @@ def proxy_remove_cmd(args):
     pm.remove()
     print_success("SSH Proxy service and socket removed.")
 
+def ide_cmd(args):
+    """Handles deep IDE maintenance inside the container (via gravity-cli)."""
+    project_name = getattr(args, "name", "sanity-gravity")
+    subcommand = args.ide_command
+    
+    # Identify active projects
+    if project_name == "sanity-gravity":
+        active = get_active_projects()
+        if not active:
+             print_error("No active managed projects found.")
+             print("Tip: Use --name <project> to specify a project.")
+             return
+        if len(active) > 1:
+             print_error(f"Multiple active projects found: {', '.join(active)}")
+             print("Please specify a project with --name.")
+             return
+        project_name = active[0]
+
+    # Check if target exists
+    active = get_active_projects()
+    if project_name not in active:
+        print_error(f"Project '{project_name}' is not active or managed.")
+        return
+
+    # Find running variant container
+    target_variant = None
+    container_name = None
+    for v in VARIANTS:
+        cname = f"{project_name}-{v}-1"
+        try:
+             out = run_command(f"docker inspect -f '{{{{.State.Running}}}}' {cname}", capture=True, check=False)
+             if out == "true":
+                 target_variant = v
+                 container_name = cname
+                 break
+        except:
+             pass
+
+    if not container_name:
+         print_error(f"No running containers found for {project_name}.")
+         return
+
+    print_header(f"IDE Maintenance ({project_name})")
+    print_info(f"Executing gravity-cli {subcommand} in {container_name}...")
+    
+    # Execute gravity-cli as root inside the container
+    cmd = f"docker exec -it -u root {container_name} /usr/local/bin/gravity-cli {subcommand}"
+    try:
+        subprocess.check_call(cmd, shell=True)
+    except subprocess.CalledProcessError:
+        sys.exit(1)
+
 def main():
     parser = argparse.ArgumentParser(description="Antigravity Sandbox CLI")
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
@@ -1259,8 +1311,8 @@ def main():
     parser_list = subparsers.add_parser("list", help="List available variants")
     parser_list.set_defaults(func=list_variants)
 
-    # Upgrade Command
-    parser_upgrade = subparsers.add_parser("upgrade", help="Upgrade legacy containers to managed status")
+    # Upgrade Command (Legacy warning added)
+    parser_upgrade = subparsers.add_parser("upgrade", help="[Legacy] Upgrade legacy containers to managed status (Host Side Only)")
     parser_upgrade.add_argument("--name", "-n", default="sanity-gravity", help="Specific project to upgrade")
     parser_upgrade.set_defaults(func=upgrade)
     
@@ -1299,6 +1351,17 @@ def main():
     
     proxy_remove = proxy_subparsers.add_parser("remove", help="Disable and remove SSH Proxy")
     proxy_remove.set_defaults(func=proxy_remove_cmd)
+    
+    # IDE Command
+    parser_ide = subparsers.add_parser("ide", help="Container-side Antigravity IDE Maintenance")
+    parser_ide.add_argument("--name", "-n", default="sanity-gravity", help="Project name (default: sanity-gravity)")
+    ide_subparsers = parser_ide.add_subparsers(dest="ide_command", required=True)
+    
+    ide_update = ide_subparsers.add_parser("update", help="Update the IDE to the latest package version via apt")
+    ide_update.set_defaults(func=ide_cmd, ide_command="update-ide")
+    
+    ide_reinstall = ide_subparsers.add_parser("reinstall", help="Cleanly purge and reinstall the IDE to fix crashes")
+    ide_reinstall.set_defaults(func=ide_cmd, ide_command="reinstall-ide")
     
     # Test Command
     parser_test = subparsers.add_parser("test", help="Run test suite")

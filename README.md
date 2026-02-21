@@ -85,7 +85,8 @@ The project includes a helper script `sanity-cli` to manage the lifecycle:
 ./sanity-cli status         # Check container status (and legacy containers)
 ./sanity-cli shell          # Enter container shell (zsh)
 ./sanity-cli open           # Open web interface (Kasm/VNC)
-./sanity-cli upgrade        # Smart upgrade (migrates legacy containers)
+./sanity-cli ide <action>   # Container IDE maintenance (update/reinstall)
+./sanity-cli upgrade        # [Legacy] Migrate old containers to new architecture
 ./sanity-cli sync_config    # Sync config to running containers (runtime)
 ./sanity-cli snapshot       # Create a snapshot of a container
 ```
@@ -172,6 +173,35 @@ Stop repeating setup steps! You can "freeze" your current container state into a
     # Start new instance 'my-new-project' from the snapshot
     ./sanity-cli up -v kasm --name my-new-project --image my-verified-state:v1
     ```
+
+### 🛠️ IDE Management & Safe Upgrade (Gravity-CLI)
+
+Sanity-Gravity provides a built-in defense mechanism against accidental IDE uninstallation or crashes caused by `apt upgrade`.
+
+We strongly separate host management vs container software management:
+- **Host**: `sanity-cli` manages the container lifecycle.
+- **Inside**: `gravity-cli` (built-in) safely manages the Antigravity IDE without breaking the `--no-sandbox` protections.
+
+#### From the Host (Using Sanity-CLI)
+If you experience IDE crashes (e.g., due to Google Gemini updates) or simply want to safely update the IDE, use the remote `ide` command from your host. 
+> **Note**: The `--name` parameter targets a specific instance (default is `sanity-gravity`). If you are running multiple isolated environments, specify the name of the container you wish to maintain.
+
+```bash
+# Safely update the Antigravity IDE to the latest package version
+./sanity-cli ide update --name sanity-gravity
+
+# Nuclear Option: Complete wipe and clean reinstall to fix persistent crashes
+./sanity-cli ide reinstall --name sanity-gravity
+```
+*(These commands automatically invoke the `gravity-cli` script as root strictly inside the target container, keeping your host clean.)*
+
+#### Inside the Container (Using Gravity-CLI)
+If you are already inside the container shell (e.g., via `./sanity-cli shell`), you can directly use the `gravity-cli` tool. Note that you must run these commands as `root` (e.g. using `sudo`).
+
+```bash
+sudo gravity-cli update-ide    # Equivalent to 'sanity-cli ide update'
+sudo gravity-cli reinstall-ide # Equivalent to 'sanity-cli ide reinstall'
+```
 
 ## Variants
 
