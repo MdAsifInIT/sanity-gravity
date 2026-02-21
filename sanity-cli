@@ -1223,6 +1223,22 @@ def ide_cmd(args):
     print_header(f"IDE Maintenance ({project_name})")
     print_info(f"Executing gravity-cli {subcommand} in {container_name}...")
     
+    # Always hot-inject the latest gravity-cli into the container to ensure
+    # legacy environments receive the latest bugfixes and protection logic.
+    print_info("Hot-injecting latest gravity-cli for compatibility...")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    cli_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli")
+    
+    inject_cmd_1 = f"docker cp {cli_src} {container_name}:/usr/local/bin/gravity-cli"
+    inject_cmd_2 = f"docker exec -u root {container_name} chmod +x /usr/local/bin/gravity-cli"
+    
+    try:
+        subprocess.check_call(inject_cmd_1, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.check_call(inject_cmd_2, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        print_error("Failed to hot-inject gravity-cli. Container might be highly incompatible.")
+        sys.exit(1)
+
     # Execute gravity-cli as root inside the container
     cmd = f"docker exec -it -u root {container_name} /usr/local/bin/gravity-cli {subcommand}"
     try:

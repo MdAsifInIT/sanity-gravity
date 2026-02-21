@@ -41,22 +41,59 @@ ensure_wrapper_protection() {
     print_info "Verifying wrapper protection mechanisms..."
     if ! dpkg-divert --list | grep -q "/usr/share/antigravity/antigravity"; then
          print_warning "dpkg-divert missing. Applying legacy wrapper protection..."
-         # Defensive check to re-apply dpkg-divert if it disappeared (from an old image)
+         
+         # Check if this is a very old container where we manually renamed the binary without dpkg-divert
+         if [ -f "/usr/share/antigravity/antigravity-original" ] && [ -f "/usr/share/antigravity/antigravity" ]; then
+             if grep -q "exec /usr/share/antigravity/antigravity-original" "/usr/share/antigravity/antigravity" 2>/dev/null; then
+                 print_info "Legacy manual wrapper detected. Converting to dpkg-divert..."
+                 # Remove the manual wrapper temporarily so dpkg-divert can take over the path cleanly
+                 rm -f "/usr/share/antigravity/antigravity"
+             fi
+         fi
+
+         # Defensive check to re-apply dpkg-divert
          if [ -f /usr/share/antigravity/antigravity-original ]; then
+             # Target already exists, avoid --rename which would fail
              dpkg-divert --add --divert /usr/share/antigravity/antigravity-original /usr/share/antigravity/antigravity
          else
              dpkg-divert --add --rename --divert /usr/share/antigravity/antigravity-original /usr/share/antigravity/antigravity
          fi
-         # Re-write wrapper just in case
-         echo '#!/bin/bash\nexec /usr/share/antigravity/antigravity-original --no-sandbox "$@"' > /usr/share/antigravity/antigravity
-         chmod +x /usr/share/antigravity/antigravity
     fi
+
+    # Always re-write wrapper just in case (use cat for safe newlines)
+    rm -f /usr/share/antigravity/antigravity || true
+    cat << 'EOF' > /usr/share/antigravity/antigravity
+#!/bin/bash
+exec /usr/share/antigravity/antigravity-original --no-sandbox "$@"
+EOF
+    chmod +x /usr/share/antigravity/antigravity
+}
+
+ensure_chrome_protection() {
+    print_info "Verifying Chrome protection mechanisms..."
+    if ! dpkg-divert --list | grep -q "/opt/google/chrome/google-chrome"; then
+        print_warning "Chrome dpkg-divert missing. Applying robust protection..."
+        if [ -f /opt/google/chrome/google-chrome-original ]; then
+            dpkg-divert --add --divert /opt/google/chrome/google-chrome-original /opt/google/chrome/google-chrome
+        else
+            dpkg-divert --add --rename --divert /opt/google/chrome/google-chrome-original /opt/google/chrome/google-chrome
+        fi
+    fi
+
+    # Always re-write wrapper to ensure --no-sandbox is present
+    rm -f /opt/google/chrome/google-chrome || true
+    cat << 'EOF' > /opt/google/chrome/google-chrome
+#!/bin/bash
+exec /opt/google/chrome/google-chrome-original --no-sandbox --disable-dev-shm-usage "$@"
+EOF
+    chmod +x /opt/google/chrome/google-chrome
 }
 
 update_ide() {
     print_info "Starting IDE Update Process..."
     
     ensure_wrapper_protection
+    ensure_chrome_protection
 
     print_info "Updating package lists..."
     apt-get update -y
@@ -97,6 +134,7 @@ reinstall_ide() {
     # Re-apply the protective wrapper
     print_info "Re-applying Sandbox container protections..."
     ensure_wrapper_protection
+    ensure_chrome_protection
 
     print_info "Cleaning up corrupted user configurations..."
     find /home -type d -name ".config/antigravity" -exec rm -rf {} + 2>/dev/null || true
