@@ -1,6 +1,7 @@
 import pytest
 import sys
 import os
+import subprocess
 import argparse
 from unittest.mock import patch, MagicMock
 
@@ -32,8 +33,16 @@ class TestIdeCommand:
         
         sanity_cli.ide_cmd(args)
         
-        expected_cmd = "docker exec -it -u root sanity-gravity-core-1 /usr/local/bin/gravity-cli update-ide"
-        mock_check_call.assert_called_with(expected_cmd, shell=True)
+        cname = "sanity-gravity-core-1"
+        base_dir = os.path.dirname(os.path.abspath(sanity_cli.__file__))
+        cli_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli")
+        
+        expected_calls = [
+            ((f"docker cp {cli_src} {cname}:/usr/local/bin/gravity-cli",), {"shell": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
+            ((f"docker exec -u root {cname} chmod +x /usr/local/bin/gravity-cli",), {"shell": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
+            ((f"docker exec -it -u root {cname} /usr/local/bin/gravity-cli update-ide",), {"shell": True})
+        ]
+        assert mock_check_call.call_args_list == expected_calls
         
     @patch("sanity_cli.run_command")
     @patch("subprocess.check_call")
@@ -46,8 +55,16 @@ class TestIdeCommand:
         
         sanity_cli.ide_cmd(args)
         
-        expected_cmd = "docker exec -it -u root my-project-core-1 /usr/local/bin/gravity-cli reinstall-ide"
-        mock_check_call.assert_called_with(expected_cmd, shell=True)
+        cname = "my-project-core-1"
+        base_dir = os.path.dirname(os.path.abspath(sanity_cli.__file__))
+        cli_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli")
+        
+        expected_calls = [
+            ((f"docker cp {cli_src} {cname}:/usr/local/bin/gravity-cli",), {"shell": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
+            ((f"docker exec -u root {cname} chmod +x /usr/local/bin/gravity-cli",), {"shell": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
+            ((f"docker exec -it -u root {cname} /usr/local/bin/gravity-cli reinstall-ide",), {"shell": True})
+        ]
+        assert mock_check_call.call_args_list == expected_calls
 
     @patch("sanity_cli.get_active_projects")
     @patch("builtins.print")

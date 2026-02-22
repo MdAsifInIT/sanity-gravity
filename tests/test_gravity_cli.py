@@ -27,6 +27,10 @@ def get_bypassed_script(tmpdir):
     os.makedirs(home_dir, exist_ok=True)
     content = content.replace('/home', home_dir)
 
+    opt_chrome_dir = os.path.join(tmpdir, "opt", "google", "chrome")
+    os.makedirs(opt_chrome_dir, exist_ok=True)
+    content = content.replace('/opt/google/chrome', opt_chrome_dir)
+
     out_path = os.path.join(tmpdir, "gravity-cli-bypassed")
     with open(out_path, "w") as f:
         f.write(content)
@@ -56,6 +60,20 @@ def test_gravity_cli_update_ide_success():
         assert "Mock apt-get update -y" in result.stdout
         assert "Mock apt-get install --only-upgrade -y antigravity" in result.stdout
         assert "IDE update completed successfully" in result.stdout
+        
+        # Verify Antigravity robust wrapper creation
+        ag_wrapper_path = os.path.join(tmpdir, "antigravity", "antigravity")
+        assert os.path.exists(ag_wrapper_path)
+        with open(ag_wrapper_path, "r") as f:
+            ag_wrapper_content = f.read()
+        assert ag_wrapper_content == f'#!/bin/bash\nexec {tmpdir}/antigravity/antigravity-original --no-sandbox "$@"\n'
+
+        # Verify Google Chrome robust wrapper creation
+        chrome_wrapper_path = os.path.join(tmpdir, "opt", "google", "chrome", "google-chrome")
+        assert os.path.exists(chrome_wrapper_path)
+        with open(chrome_wrapper_path, "r") as f:
+            chrome_wrapper_content = f.read()
+        assert chrome_wrapper_content == f'#!/bin/bash\nexec {tmpdir}/opt/google/chrome/google-chrome-original --no-sandbox --disable-dev-shm-usage "$@"\n'
 
 def test_gravity_cli_update_ide_failure():
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -99,6 +117,20 @@ def test_gravity_cli_reinstall_ide_success():
         assert "Mock apt-get remove --purge -y antigravity" in result.stdout
         assert "Mock apt-get install -y antigravity" in result.stdout
         assert "IDE Reinstallation completed successfully." in result.stdout
+        
+        # Verify Antigravity robust wrapper creation
+        ag_wrapper_path = os.path.join(tmpdir, "antigravity", "antigravity")
+        assert os.path.exists(ag_wrapper_path)
+        with open(ag_wrapper_path, "r") as f:
+            ag_wrapper_content = f.read()
+        assert ag_wrapper_content == f'#!/bin/bash\nexec {tmpdir}/antigravity/antigravity-original --no-sandbox "$@"\n'
+
+        # Verify Google Chrome robust wrapper creation
+        chrome_wrapper_path = os.path.join(tmpdir, "opt", "google", "chrome", "google-chrome")
+        assert os.path.exists(chrome_wrapper_path)
+        with open(chrome_wrapper_path, "r") as f:
+            chrome_wrapper_content = f.read()
+        assert chrome_wrapper_content == f'#!/bin/bash\nexec {tmpdir}/opt/google/chrome/google-chrome-original --no-sandbox --disable-dev-shm-usage "$@"\n'
 
 def test_gravity_cli_invalid_command():
     with tempfile.TemporaryDirectory() as tmpdir:
