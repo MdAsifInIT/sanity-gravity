@@ -4,187 +4,144 @@
   <img src="assets/logo.jpg" alt="Sanity-Gravity Logo" width="300">
 </p>
 
-[English](README.md) | [繁體中文](README_zh-TW.md) | [日本語](README_ja.md)
+<p align="center">
+  <em>A modernized, secured container sandbox environment built perfectly for Agentic AI IDEs</em>
+</p>
 
-**Sanity-Gravity** is a secure, containerized sandbox environment designed specifically for **Agentic AI IDEs** (like Google Antigravity). It minimizes execution risks by confining the agent's activities within a disposable Docker container while providing a full graphical desktop experience.
+<p align="center">
+  <a href="README.md">English</a> | <a href="README_zh-TW.md">繁體中文</a> | <a href="README_ja.md">日本語</a>
+</p>
 
-## Demo
+---
 
-📺 **Watch the Demo Video**: [YouTube Link](https://youtu.be/x0DGKuHyx2A)
+## TL;DR
+
+**Sanity-Gravity** is a modern, zero-configuration GUI sandbox tailored for Agentic AI workflows. It completely confines all potentially high-risk actions into disposable Docker containers while seamlessly streaming a full XFCE4 desktop experience to your browser.
+
+**Spin up a secure AI playground in seconds:**
+
+```bash
+# 1. Build the base images
+./sanity-cli build
+
+# 2. Start the sandbox with a persistent workspace volume
+./sanity-cli up -v kasm --name my-agent-task --workspace ./ai-workspace
+```
+
+Your secure desktop is ready, go to **https://localhost:8444**!
+- **Username**: `(Your actual Host OS username)`
+- **Password**: `antigravity` (Or whatever you set via `--password`)
+
+📺 **[Watch Demo on YouTube](https://youtu.be/x0DGKuHyx2A)**
+
+## Table of Contents
+
+- [Why Sanity-Gravity?](#why-sanity-gravity)
+- [Quick Start](#quick-start)
+- [Command Reference (`sanity-cli`)](#command-reference-sanity-cli)
+- [Advanced Features](#advanced-features)
+  - [IDE Management & Safe Upgrade](#ide-management--safe-upgrade-gravity-cli)
+  - [Multi-Instance Support](#multi-instance-support)
+  - [Container Snapshots](#container-snapshots-perfect-copy)
+  - [SSH Agent Proxy](#ssh-agent-proxy-advanced)
+  - [Runtime Config Sync](#runtime-config-sync)
+- [Variants](#variants)
+- [SSH Access](#ssh-access)
+- [Project Structure](#project-structure)
+- [What's in a Name?](#whats-in-a-name)
+
+---
 
 ## Why Sanity-Gravity?
 
-*   **🛡️ Safety First**: Isolates "Agentic Execution" risks. If an agent executes `rm -rf /` or malicious code, only the container is affected, not your host machine.
-*   **🖥️ Full Desktop GUI**: Includes **Ubuntu 24.04 + XFCE4** and **KasmVNC**, allowing agents to control a real web browser (Chrome) and GUI applications naturally.
-*   **🚀 Zero Config**: Pre-installed with **Antigravity IDE**, Google Chrome, Git, and essential dev tools.
-*   **🔌 Seamless IO**: Automatically maps your host user's UID/GID, preventing the common "root-owned files" permission hell when mounting workspaces.
-*   **🧩 Multi-Instance Capable**: Run multiple isolated sandboxes simultaneously (e.g., separate environments for Dev, Test, and Prod) with automatic port assignment.
-*   **📸 Perfect Snapshots**: Save the exact state of your container (filesystem, installed apps, active logins) as a Docker image. Fork new projects from this frozen state instantly.
+| Feature                 | Description                                                                                                            |
+| :---------------------- | :--------------------------------------------------------------------------------------------------------------------- |
+| **🛡️ Absolute Safety**   | Completely shields the host. Even if an AI agent runs `rm -rf /` or downloads malware, only the sandbox is destroyed.  |
+| **🖥️ Full GUI Desktop**  | Built-in **Ubuntu 24.04 + XFCE4** and **KasmVNC**. AI agents can operate browsers and GUI interfaces just like humans. |
+| **🚀 Out-of-the-Box**    | Pre-installed with **Antigravity IDE**, Google Chrome, Git, etc. Zero setup time required.                             |
+| **🔌 Seamless Disk I/O** | Smartly maps to your host's UID/GID. No more root-owned file disasters after host volume mounts.                       |
+| **🧩 Multi-Instance**    | Parallelize tasks with isolated sandboxes. The system automatically assigns clean ports avoiding conflicts.            |
+| **📸 Freeze Snapshots**  | Freeze the customized environment state (installed software, active logins) into a new image branch instantly.         |
+| **🔄 IDE Safe Upgrade**  | Built-in scripts manage Agentic IDE updates remotely, strictly bypassing destructive `apt upgrade` behaviors.          |
+| **🔑 SSH Agent Proxy**   | Securely pass host SSH credentials to the container. Execute Git operations freely without copying private keys.       |
 
 ## Quick Start
 
-### Prerequisites
-*   Docker & Docker Compose (v2.0+)
-*   Python 3.7+ (for `sanity-cli`)
-*   *(Optional)* **NVIDIA Container Toolkit** (for GPU acceleration)
+### System Requirements
+* Docker & Docker Compose (v2.0+)
+* Python 3.7+ (Powers `sanity-cli`)
+* *(Optional)* **NVIDIA Container Toolkit** (For GPU Support)
 
 ### Installation
 
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/shiritai/sanity-gravity.git
-    cd sanity-gravity
-    ```
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/shiritai/sanity-gravity.git
+   cd sanity-gravity
+   ```
 
-2.  Build the sandbox environment:
-    ```bash
-    ./sanity-cli build
-    ```
+2. Build your sandbox base images:
+   ```bash
+   ./sanity-cli build
+   ```
 
-3.  Run the KasmVNC variant (Recommended):
-    ```bash
-    ./sanity-cli up -v kasm --password mysecret
-    ```
+3. Launch the KasmVNC variant (Recommended for a smooth web experience):
+   ```bash
+   ./sanity-cli up -v kasm --password mysecret
+   ```
 
-4.  **Access the Desktop**:
-    Open your browser and navigate to: **[https://localhost:8444](https://localhost:8444)**
-    *   **User**: `(Your Host Username)`
-    *   **Password**: `mysecret` (or `antigravity` if unspecified)
+4. **Access your desktop**:
+   Open a browser and navigate to: **[https://localhost:8444](https://localhost:8444)**
+   * **Username**: `(Your host username)`
+   * **Password**: `mysecret` (Default is `antigravity`)
 
-> **Note**: You may see a "Self-signed certificate" warning. This is normal for a local sandbox; click "Advanced" -> "Proceed".
+> **Note**: A "Self-Signed Certificate" warning is completely normal on localhost. Click "Advanced" and proceed.
 
-## CLI Usage (`sanity-cli`)
+## Command Reference (`sanity-cli`)
 
-The project includes a helper script `sanity-cli` to manage the lifecycle:
-
-```bash
-./sanity-cli list           # List available variants
-./sanity-cli build [name]   # Build specific variant (default: all)
-./sanity-cli run -v [name] [options] # Run variant
-  # Options:
-  #   --password [pwd]    (Set SSH/VNC password, default: antigravity)
-  #   --ssh-port [port]   (Default: 2222)
-  #   --kasm-port [port]  (Default: 8444)
-  #   --vnc-port [port]   (Default: 5901)
-  #   --novnc-port [port] (Default: 6901)
-  #   --gpu               (Enable NVIDIA GPU support)
-  #   --skip-check        (Skip prerequisite checks)
-  #   --workspace [path]  (Set custom workspace path, default: ./workspace)
-  #   --workspace [path]  (Set custom workspace path, default: ./workspace)
-  #   --name [name]       (Set project name for multi-instance, default: sanity-gravity)
-  #   --cpus [limit]      (Limit CPUs, e.g. 1.5, default: unlimited)
-  #   --memory [limit]    (Limit Memory, e.g. 4G, default: unlimited)
-
-./sanity-cli up -v core     # Start/Create containers (alias: run)
-./sanity-cli down           # Stop and REMOVE containers
-./sanity-cli stop           # Stop containers (preserve data)
-./sanity-cli start          # Start stopped containers
-./sanity-cli restart        # Restart containers
-./sanity-cli start          # Start stopped containers
-./sanity-cli restart        # Restart containers
-./sanity-cli status         # Check container status (and legacy containers)
-./sanity-cli shell          # Enter container shell (zsh)
-./sanity-cli open           # Open web interface (Kasm/VNC)
-./sanity-cli ide <action>   # Container IDE maintenance (update/reinstall)
-./sanity-cli upgrade        # [Legacy] Migrate old containers to new architecture
-./sanity-cli sync_config    # Sync config to running containers (runtime)
-./sanity-cli snapshot       # Create a snapshot of a container
-```
-
-### Configuration Sync
-
-`sanity-cli` automatically detects and syncs configuration files to your container for a seamless experience.
-
-1.  **Project Config**: Place `GEMINI.md` or `settings.json` in a `config/` directory at the project root.
-2.  **Interactive Init**: If no config is found, the CLI will ask if you want to copy your host configuration (`~/.gemini/`) or start fresh.
-3.  **Automatic Sync**: Files are copied into the container (`~/.gemini/`) on every start, ensuring your environment is always up-to-date.
-4.  **Runtime Sync**: Use `./sanity-cli sync_config` to push configuration changes to a running container immediately without restarting it.
-
-### 🔑 Git Context Sharing
-
-Sanity-Gravity automatically detects and shares your host's Git configuration and SSH keys (via Agent Forwarding) with the container. This allows you to use `git` inside the container seamlessly **without exposing your private keys**.
-
-**Prerequisites:**
-
-1.  **Git Config**: Ensure you have `~/.gitconfig` on your host.
-2.  **SSH Agent**: Ensure your SSH Agent is running and your keys are added:
-    ```bash
-    # Start agent (if not running)
-    eval $(ssh-agent)
-    # Add your key (e.g., id_ed25519 or id_rsa)
-    ssh-add ~/.ssh/id_ed25519
-    ```
-
-When you run `./sanity-cli up`, it will automatically detect the agent and forward the socket.
-
-### 🔌 SSH Agent Proxy (Advanced)
-
-Sanity-Gravity includes a smart Proxy Manager that securely bridges the SSH Agent Socket between your host and the container. This allows `git` operations inside the container to authenticate using your host's private keys without copying them.
-
-Typically, `./sanity-cli up` handles the proxy startup and mounting automatically. However, in some cases (e.g., daemon crashes or path changes), you might need to manage it manually:
+`sanity-cli` acts as the central orchestrator providing the following commands:
 
 ```bash
-# Check Proxy status (includes socket path and connection test)
-./sanity-cli proxy status
+# Lifecycle Management
+./sanity-cli up -v [name]   # Start container (options below)
+  --password [pwd]          # Custom SSH/VNC password (default: antigravity)
+  --workspace [path]        # Assign workspace dir (default: ./workspace)
+  --name [name]             # Isolate instances by project name (default: sanity-gravity)
+  --cpus [limit]            # CPU quota (e.g. 1.5)
+  --memory [limit]          # Memory quota (e.g. 4G)
+  --gpu                     # Enable GPU passthrough
+./sanity-cli down           # Stop and entirely delete containers & networks
+./sanity-cli stop           # Pause containers (keeps data intact)
+./sanity-cli start          # Start paused containers
+./sanity-cli restart        # Force reboot running containers
 
-# Manually start/fix the Proxy service
-./sanity-cli proxy setup
+# Environment Inspection
+./sanity-cli status         # Check all running instances
+./sanity-cli shell          # Instantly drop into a container shell (zsh)
+./sanity-cli open           # Launch the default browser to the web VNC
 
-# Remove the Proxy service (cleans up Socket and Systemd Service)
-./sanity-cli proxy remove
+# Maintenance & Sync
+./sanity-cli ide <action>   # Remotely deploy IDE maintenance to containers
+./sanity-cli proxy <action> # Manage SSH Proxy Daemon service
+./sanity-cli sync_config    # Push updated host settings to running containers
+./sanity-cli snapshot       # Freeze container state to a new localized image
 ```
 
-### 🧩 Multi-Instance Support
+---
 
-**Need to run parallel tasks?** Sanity-Gravity supports running multiple isolated sandbox instances simultaneously. Just specify a unique project name using the `--name` argument.
-
-```bash
-# Start a second instance named 'dev-02'
-./sanity-cli up -v core --name dev-02 --workspace /tmp/dev02
-```
-
-**Zero Conflict**: When using a custom name, `sanity-cli` automatically detects and assigns available random ports, so you never have to worry about port collisions. The assigned ports will be displayed clearly in the output.
-
-To stop or check the status of a specific instance:
-
-```bash
-./sanity-cli status --name dev-02
-./sanity-cli stop --name dev-02   # Suspend (preserve data)
-./sanity-cli down --name dev-02   # Destroy (remove container)
-```
-
-### 📸 Container Snapshots (Perfect Copy)
-
-Stop repeating setup steps! You can "freeze" your current container state into a new image and use it as a base for future instances.
-
-**Scenario**: You have manually installed a complex environment or logged into web services in your `my-base-env` container, and you want to fork a new experiment `my-new-project` from this exact state.
-
-1.  **Create a Snapshot**:
-    This will pause the container, commit it to a new Docker image, and verify integrity.
-    ```bash
-    ./sanity-cli snapshot --name my-base-env --tag my-verified-state:v1
-    ```
-
-2.  **Use It (Fork)**:
-    Start a new project using the snapshot as a base.
-    > **Note**: You must specify the variant (`-v kasm` or `-v vnc`) to ensure the correct desktop environment loads, even when using a custom image.
-    > **Warning**: Starting from a snapshot will **reset the Antigravity Agent's browser profile** (cookies, sessions) to ensure stability.
-    ```bash
-    # Start new instance 'my-new-project' from the snapshot
-    ./sanity-cli up -v kasm --name my-new-project --image my-verified-state:v1
-    ```
+## Advanced Features
 
 ### 🛠️ IDE Management & Safe Upgrade (Gravity-CLI)
 
-Sanity-Gravity provides a built-in defense mechanism against accidental IDE uninstallation or crashes caused by `apt upgrade`.
+Sanity-Gravity provides a robust OS-level defense mechanism against accidental IDE or Web Browser uninstallation / crashes caused by `apt upgrade`.
 
-We strongly separate host management vs container software management:
-- **Host**: `sanity-cli` manages the container lifecycle.
-- **Inside**: `gravity-cli` (built-in) safely manages the Antigravity IDE without breaking the `--no-sandbox` protections.
+We strongly separate host orchestration vs container software management:
+- **Host**: `sanity-cli` acts as the orchestrator. When executing maintenance commands, it **automatically hot-injects** the latest protection script into the target container, ensuring resilient backward compatibility with all legacy snapshots.
+- **Inside**: `gravity-cli` (built-in container script) safely manages the Antigravity IDE and Google Chrome browser via `dpkg-divert`, guaranteeing their `--no-sandbox` privilege protections are never eradicated by subsequent system upgrades.
 
 #### From the Host (Using Sanity-CLI)
-If you experience IDE crashes (e.g., due to Google Gemini updates) or simply want to safely update the IDE, use the remote `ide` command from your host. 
-> **Note**: The `--name` parameter targets a specific instance (default is `sanity-gravity`). If you are running multiple isolated environments, specify the name of the container you wish to maintain.
+If you experience IDE crashes or just want to safely update the underlying Antigravity core, use the remote `ide` command from your host.
+> **Note**: Find your running instance `--name` through `./sanity-cli status`.
 
 ```bash
 # Safely update the Antigravity IDE to the latest package version
@@ -193,15 +150,54 @@ If you experience IDE crashes (e.g., due to Google Gemini updates) or simply wan
 # Nuclear Option: Complete wipe and clean reinstall to fix persistent crashes
 ./sanity-cli ide reinstall --name sanity-gravity
 ```
-*(These commands automatically invoke the `gravity-cli` script as root strictly inside the target container, keeping your host clean.)*
+*(These commands automatically invoke the proxy `gravity-cli` as root strictly inside the target container, eliminating host pollution.)*
 
 #### Inside the Container (Using Gravity-CLI)
-If you are already inside the container shell (e.g., via `./sanity-cli shell`), you can directly use the `gravity-cli` tool. Note that you must run these commands as `root` (e.g. using `sudo`).
+If you are already inside the container shell (via `./sanity-cli shell`), directly use the CLI. Note that you must be `root`.
 
 ```bash
-sudo gravity-cli update-ide    # Equivalent to 'sanity-cli ide update'
-sudo gravity-cli reinstall-ide # Equivalent to 'sanity-cli ide reinstall'
+sudo gravity-cli update-ide    # Equivalent to 'ide update'
+sudo gravity-cli reinstall-ide # Equivalent to 'ide reinstall'
 ```
+
+### 🔌 SSH Agent Proxy (Advanced)
+
+Sanity-Gravity includes a smart Proxy Manager that securely bridges the SSH Agent Socket between your host and the container. This enables `git push` / `git pull` operations inside the container using your host's private keys without ever copying them.
+
+Usually `./sanity-cli up` handles everything automatically. For manual interventions:
+```bash
+./sanity-cli proxy status   # Check Proxy daemon and active connections
+./sanity-cli proxy setup    # Restart / fix Proxy daemon
+./sanity-cli proxy remove   # Terminate Proxy daemon completely
+```
+
+### 🧩 Multi-Instance Support
+
+**Executing parallel tasks?** Run infinite isolated sandbox instances simultaneously using the `--name` argument.
+
+```bash
+# Start a second instance named 'dev-02'
+./sanity-cli up -v core --name dev-02 --workspace /tmp/dev02
+```
+**Zero Conflict Guarantee**: `sanity-cli` auto-detects and allocates random available host ports when using a custom name. Read the CLI output to find your assigned ports. Control your instance targeting the given name (e.g., `./sanity-cli down --name dev-02`).
+
+### 📸 Container Snapshots (Perfect Copy)
+
+"Freeze" your configured environment (software installations, active login sessions) into a new image and use it as a base.
+
+1. **Create Snapshot**:
+   ```bash
+   ./sanity-cli snapshot --name my-base-env --tag my-verified-state:v1
+   ```
+2. **Use Snapshot**:
+   ```bash
+   ./sanity-cli up -v kasm --name new-experiment --image my-verified-state:v1
+   ```
+
+### 🔄 Runtime Config Sync
+If you updated `host_config.py` but don't want to restart the container, simply run `./sanity-cli sync_config` to instantly apply your new Git identities.
+
+---
 
 ## Variants
 
@@ -213,43 +209,31 @@ sudo gravity-cli reinstall-ide # Equivalent to 'sanity-cli ide reinstall'
 
 ## SSH Access
 
-All variants, **including GUI variants** (Kasm/VNC), have SSH enabled by default. This enables powerful hybrid workflows:
-
-*   **Headless Control**: Automate GUI tools via CLI without opening the desktop.
-*   **Port Forwarding**: Tunnel web apps or debuggers from the container to your host (e.g., `ssh -L 3000:localhost:3000 ...`).
-*   **File Transfer**: Easily move build artifacts using `scp` or `sftp`.
-*   **Remote Development**: Connect your local VS Code / JetBrains IDE via SSH for a comfortable coding experience while the Agent runs in the sandbox.
-
-**Default Port**: `2222` (Configurable via `--ssh-port`)
-**Credentials**: User `(Your Host Username)` / Password `antigravity` (or custom)
+All variants, **including GUI variants** (Kasm/VNC), have SSH enabled by default (`Port 2222`). This empowers headless task automations, direct port-forwardings (`-L`), SCP commands, and remote logic using VS Code Remote.
 
 ```bash
-# Example: Connect to Kasm variant
+# Example
 ssh -p 2222 developer@localhost
 ```
 
 ## Project Structure
 
-A quick overview of the repository layout:
-
 ```text
 sanity-gravity/
 ├── sanity-cli          # 🛠️ Main CLI entry point (Python script)
 ├── sandbox/            # 📦 Docker build context and configurations
-│   ├── variants/       #    - Dockerfiles for each variant (core, kasm, vnc)
-│   └── rootfs/         #    - Shared overlay (scripts, configs) applied to all
+│   ├── variants/       #    - Dockerfiles for variants (core, kasm, vnc)
+│   └── rootfs/         #    - Shared overlay (scripts, configs)
 ├── tests/              # 🧪 Pytest integration suite
-├── workspace/          # 📂 Mounted user directory (persistent data)
-└── .github/            # 🐙 CI/CD workflows and issue templates
+├── workspace/          # 📂 Default mounted user directory
+└── .github/            # 🐙 CI/CD & GitHub assets
 ```
 
 ## What's in a Name?
 
 > **"Sanity-Gravity"** implies: Providing a strong **Gravity** (constraints & grounding) in the wild world of **Antigravity** (AI Agents), to preserve the developer's **Sanity**.
 
-*   **Sanity**: Keeping your host environment **sane**. By confining unpredictable Agentic AI execution to a disposable container, we prevent accidental damage (e.g., `rm -rf /`) and configuration pollution.
-*   **Gravity**: Providing a grounded execution environment for **Antigravity** (Agentic) systems. It gives "floating" AI agents a concrete place to land, interact with tools, and affect the world, while remaining bound by the laws of physics (isolation).
+By confining unpredictable AI execution to a disposable container, we stop accidental commands (e.g., `rm -rf /`) and configuration pollution.
 
 ## License
-
-This project is licensed under the **Apache License 2.0**. See [LICENSE](LICENSE) for details.
+MIT License

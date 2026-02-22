@@ -4,249 +4,240 @@
   <img src="assets/logo.jpg" alt="Sanity-Gravity Logo" width="300">
 </p>
 
-[English](README.md) | [繁體中文](README_zh-TW.md) | [日本語](README_ja.md)
+<p align="center">
+  <em>Agentic AI IDE 向けに構築された最新の安全なコンテナサンドボックス環境</em>
+</p>
 
-**Sanity-Gravity** は、**Agentic AI IDEs** (Google Antigravityなど) のために特別に設計された、安全でコンテナ化されたサンドボックス環境です。AI エージェントの活動を使い捨ての Docker コンテナ内に閉じ込めることで、完全なグラフィカルデスクトップ体験を提供しながら、実行リスクを最小限に抑えます。
+<p align="center">
+  <a href="README.md">English</a> | <a href="README_zh-TW.md">繁體中文</a> | <a href="README_ja.md">日本語</a>
+</p>
 
-## デモ (Demo)
+---
 
-📺 **デモ動画を見る**: [YouTube Link](https://youtu.be/x0DGKuHyx2A)
+## TL;DR
 
-## なぜ Sanity-Gravity なのか? (Why Sanity-Gravity?)
+**Sanity-Gravity** は、Agentic AI ワークフローに特化して構築された、最新の「設定不要」の GUI サンドボックスです。高リスクな可能性のあるすべての操作を使い捨ての Docker コンテナ内に完全に隔離し、シームレスな XFCE4 デスクトップ体験をブラウザに直接ストリーミングします。
 
-*   **🛡️ 安全第一 (Safety First)**: 「AI エージェント実行」のリスクを隔離します。エージェントが `rm -rf /` や悪意のあるコードを実行しても、影響を受けるのはコンテナだけで、ホストマシンは安全です。
-*   **🖥️ 完全なデスクトップ GUI**: **Ubuntu 24.04 + XFCE4** と **KasmVNC** を内蔵しており、エージェントは実際の Web ブラウザ (Chrome) や GUI アプリケーションを人間と同じように自然に制御できます。
-*   **🚀 ゼロ設定 (Zero Config)**: **Antigravity IDE**、Google Chrome、Git、および必須の開発ツールがプリインストールされています。
-*   **🔌 シームレスな IO**: ホストユーザーの UID/GID を自動的にマッピングし、ワークスペースをマウントする際によくある「root 所有ファイルの権限地獄」を防ぎます。
-*   **🧩 マルチインスタンス対応 (Multi-Instance Capable)**: 複数の独立したサンドボックス環境（例：開発、テスト、本番環境用）を同時に実行でき、ポートの競合も自動的に処理されます。
-*   **📸 完全なスナップショット**: コンテナの正確な状態（ファイルシステム、インストール済みアプリ、ログイン状態）を Docker イメージとして保存します。この凍結された状態から、瞬時に新しいプロジェクトをフォークできます。
+**AI 実験環境を数秒で起動：**
+
+```bash
+# 1. ベースイメージを構築
+./sanity-cli build
+
+# 2. 永続的なワークスペースボリュームでサンドボックスを起動
+./sanity-cli up -v kasm --name my-agent-task --workspace ./ai-workspace
+```
+
+安全なデスクトップの準備が完了しました。**https://localhost:8444** にアクセスしてください！
+- **ユーザー名**: `(ホスト OS の実際のユーザー名)`
+- **パスワード**: `antigravity` (`--password` で設定した値)
+
+📺 **[YouTube でデモを視聴する](https://youtu.be/x0DGKuHyx2A)**
+
+## 目次 (Table of Contents)
+
+- [なぜ Sanity-Gravity なのか？](#なぜ-sanity-gravity-なのか)
+- [クイックスタート](#クイックスタート)
+- [コマンドリファレンス (`sanity-cli`)](#コマンドリファレンス-sanity-cli)
+- [高度な機能](#高度な機能)
+  - [IDE の管理と安全なアップグレード](#ide-のメンテナンスと安全なアップグレード-gravity-cli)
+  - [マルチインスタンスのサポート](#マルチインスタンス-multi-instance)
+  - [コンテナスナップショット](#コンテナスナップショット-snapshots)
+  - [SSH エージェントプロキシ](#ssh-エージェントプロキシ-agent-proxy)
+  - [ランタイム設定同期 (Runtime Config Sync)](#ランタイム設定同期-runtime-config-sync)
+- [バリアント (Variants)](#バリアント-variants)
+- [SSH アクセス (SSH Access)](#ssh-アクセス-ssh-access)
+- [プロジェクト構造 (Project Structure)](#プロジェクト構造-project-structure)
+- [名前の由来 (What's in a Name?)](#名前の由来-whats-in-a-name)
+
+---
+
+## なぜ Sanity-Gravity なのか？
+
+| 機能 (Feature)                   | 説明 (Description)                                                                                                                |
+| :------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------- |
+| **🛡️ 絶対的な安全性**             | ホストを完全に保護。AI エージェントが `rm -rf /` を実行したりマルウェアをダウンロードしても、サンドボックスが破壊されるだけです。 |
+| **🖥️ 完全な GUI デスクトップ**    | **Ubuntu 24.04 + XFCE4** と **KasmVNC** を内蔵。AI は人間と同じようにブラウザや GUI を操作できます。                              |
+| **🚀 すぐに使える**               | **Antigravity IDE**、Google Chrome、Git などの中核パッケージが事前インストール済み。準備時間はゼロ。                              |
+| **🔌 シームレスなディスク I/O**   | 現在のホスト UID/GID にスマートに対応。ボリュームマウント後にファイルが root 所有になる悲劇を防ぎます。                           |
+| **🧩 マルチインスタンス**         | 隔離された環境でタスクを並行処理。システムは競合を避けてクリーンなポートを自動で割り当てます。                                    |
+| **📸 凍結スナップショット**       | 現在の環境状態（インストール済みソフトウェア、ログイン情報）を新しいイメージブランチとして瞬時に凍結します。                      |
+| **🔄 IDE の安全なアップグレード** | 組み込みのスクリプトで IDE を安全に管理。破壊的な `apt upgrade` の挙動を確実に回避します。                                        |
+| **🔑 SSH エージェントプロキシ**   | プライベートキーをコピーすることなく、コンテナ内で安全にホストの認証情報を使って Git 操作を自由に行なえます。                     |
 
 ## クイックスタート
 
-### 前提条件
-*   Docker & Docker Compose (v2.0+)
-*   Python 3.7+ (`sanity-cli` 用)
-*   *(オプション)* **NVIDIA Container Toolkit** (GPU アクセラレーション用)
+### システム要件
+* Docker & Docker Compose (v2.0+)
+* Python 3.7+ (`sanity-cli` 用)
+* *(オプション)* **NVIDIA Container Toolkit** (GPU サポート用)
 
-### インストール
+### インストール手順
 
-1.  リポジトリをクローンします:
-    ```bash
-    git clone https://github.com/shiritai/sanity-gravity.git
-    cd sanity-gravity
-    ```
+1. このリポジトリの複製:
+   ```bash
+   git clone https://github.com/shiritai/sanity-gravity.git
+   cd sanity-gravity
+   ```
 
-2.  サンドボックス環境をビルドします:
-    ```bash
-    ./sanity-cli build
-    ```
+2. サンドボックスのベースイメージの構築:
+   ```bash
+   ./sanity-cli build
+   ```
 
-3.  KasmVNC バリアントを実行します (推奨):
-    ```bash
-    ./sanity-cli up -v kasm --password mysecret
-    ```
+3. KasmVNC バリアントの起動 (スムーズなウェブ体験のために推奨):
+   ```bash
+   ./sanity-cli up -v kasm --password mysecret
+   ```
 
-4.  **デスクトップにアクセス**:
-    ブラウザを開き、以下にアクセスします: **[https://localhost:8444](https://localhost:8444)**
-    *   **ユーザー**: `(あなたのホストユーザー名)`
-    *   **パスワード**: `mysecret` (指定しない場合、デフォルトは `antigravity`)
+4. **デスクトップへのアクセス**:
+   ブラウザを開き、以下にアクセスします: **[https://localhost:8444](https://localhost:8444)**
+   * **ユーザー名**: `(ホストのユーザー名)`
+   * **パスワード**: `mysecret` (デフォルトは `antigravity`)
 
-> **注意**: 「自己署名証明書 (Self-signed certificate)」の警告が表示される場合があります。これはローカルサンドボックスでは正常な動作です。「詳細設定」->「進む」をクリックしてください。
+> **注意**: localhost での "自己署名証明書" の警告は完全に正常です。"詳細設定" をクリックして進んでください。
 
-## CLI の使用法 (`sanity-cli`)
+## コマンドリファレンス (`sanity-cli`)
 
-このプロジェクトには、ライフサイクルを管理するためのヘルパースクリプト `sanity-cli` が含まれています:
-
-```bash
-./sanity-cli list           # 利用可能なバリアントを一覧表示
-./sanity-cli build [name]   # 特定のバリアントをビルド (デフォルト: all)
-./sanity-cli up -v [name]   # コンテナを作成して起動 (docker compose up)
-  # オプション:
-  #   --password [pwd]    (SSH/VNC パスワードを設定, デフォルト: antigravity)
-  #   --ssh-port [port]   (デフォルト: 2222)
-  #   --kasm-port [port]  (デフォルト: 8444)
-  #   --vnc-port [port]   (デフォルト: 5901)
-  #   --novnc-port [port] (デフォルト: 6901)
-  #   --gpu               (NVIDIA GPU サポートを有効化)
-  #   --skip-check        (前提条件のチェックをスキップ)
-  #   --workspace [path]  (カスタムワークスペースパスを設定, デフォルト: ./workspace)
-  #   --name [name]       (マルチインスタンス用のプロジェクト名を設定, デフォルト: sanity-gravity)
-  #   --cpus [limit]      (CPU制限, 例: 1.5, デフォルト: 無制限)
-  #   --memory [limit]    (メモリ制限, 例: 4G, デフォルト: 無制限)
-  #   --image [tag]       (スナップショット復元用のカスタムベースイメージを使用)
-
-./sanity-cli down           # コンテナを停止して削除
-./sanity-cli stop           # コンテナを停止 (データは保持)
-./sanity-cli start          # 停止したコンテナを起動
-./sanity-cli restart        # コンテナを再起動
-./sanity-cli status         # コンテナの状態を確認 (レガシーコンテナ含む)
-./sanity-cli shell          # コンテナシェルに入る (zsh)
-./sanity-cli open           # Webインターフェースを開く (Kasm/VNC)
-./sanity-cli ide <action>   # コンテナ内 IDE のメンテナンス (update/reinstall)
-./sanity-cli upgrade        # [レガシー] 古いコンテナを新アーキテクチャに移行する
-./sanity-cli sync_config    # 設定を実行中のコンテナに同期 (Runtime Sync)
-./sanity-cli snapshot       # コンテナのスナップショットを作成
-```
-
-### 設定の同期 (Configuration Sync)
-
-`sanity-cli` は設定ファイルを自動的に検出し、コンテナに同期することで、シームレスな体験を提供します。
-
-1.  **プロジェクト設定**: プロジェクトのルートに `config/` ディレクトリを作成し、`GEMINI.md` や `settings.json` を配置します。
-2.  **対話的な初期化**: 設定が見つからない場合、CLI はホスト (`~/.gemini/`) からコピーするか、新規作成するかを尋ねます。
-3.  **自動同期**: 起動するたびにファイルがコンテナ (`~/.gemini/`) にコピーされ、環境設定が常に最新の状態に保たれます。
-4.  **ランタイム同期 (Runtime Sync)**: `./sanity-cli sync_config` を使用して、コンテナを再起動することなく、設定の変更を実行中のコンテナに即座に反映できます。
-
-### 🔑 Git コンテキスト共有 (Git Context Sharing)
-
-Sanity-Gravity は、ホストの Git 設定と SSH キー（Agent Forwarding 経由）を自動的に検出し、コンテナと共有します。これにより、**秘密鍵を公開することなく**、コンテナ内でシームレスに `git` を使用できます。
-
-**準備 (Prerequisites):**
-
-1.  **Git 設定**: ホストに `~/.gitconfig` があることを確認してください。
-2.  **SSH Agent**: SSH Agent が実行されており、キーが追加されていることを確認してください:
-    ```bash
-    # エージェントを起動 (実行されていない場合)
-    eval $(ssh-agent)
-    # キーを追加 (例: id_ed25519 や id_rsa)
-    ssh-add ~/.ssh/id_ed25519
-    ```
-
-`./sanity-cli up` を実行すると、自動的にエージェントが検出され、ソケットが転送されます。
-
-### 🔌 SSH Agent Proxy (詳細設定)
-
-Sanity-Gravity には、ホストとコンテナ間で SSH Agent ソケットを安全にブリッジするスマートな Proxy マネージャーが組み込まれています。これにより、秘密鍵をコピーすることなく、コンテナ内の `git` 操作でホストの認証情報を使用できます。
-
-通常、`./sanity-cli up` がプロキシの起動とマウントを自動的に処理します。ただし、デーモンのクラッシュやパスの変更など、特定の状況では手動で管理する必要がある場合があります:
+`sanity-cli` は、中央のオーケストレーターとして以下のコマンドを提供します。
 
 ```bash
-# プロキシの状態を確認 (ソケットパスと接続テストを含む)
-./sanity-cli proxy status
+# ライフサイクル管理
+./sanity-cli up -v [name]   # コンテナの起動 (以下のオプションを付加可能)
+  --password [pwd]          # カスタム SSH/VNC パスワード (デフォルト: antigravity)
+  --workspace [path]        # ワークスペースディレクトリの割り当て (デフォルト: ./workspace)
+  --name [name]             # プロジェクト名によるインスタンスの分離 (デフォルト: sanity-gravity)
+  --cpus [limit]            # CPU クォータ (例: 1.5)
+  --memory [limit]          # メモリ クォータ (例: 4G)
+  --gpu                     # NVIDIA GPU サポートを有効化
+./sanity-cli down           # コンテナとネットワークの完全な停止と削除
+./sanity-cli stop           # コンテナの一時停止 (データは保持)
+./sanity-cli start          # 一時停止したコンテナの開始
+./sanity-cli restart        # 実行中のコンテナの強制再起動
 
-# プロキシサービスを手動で起動/修復
-./sanity-cli proxy setup
+# 環境の監視
+./sanity-cli status         # すべての実行中のインスタンスの確認
+./sanity-cli shell          # コンテナシェル (zsh) へ即座にアクセス
+./sanity-cli open           # デフォルトブラウザで Web VNC デスクトップを起動
 
-# プロキシサービスを削除 (ソケットとSystemdサービスをクリーンアップ)
-./sanity-cli proxy remove
+# メンテナンスと同期
+./sanity-cli ide <action>   # コンテナへの IDE メンテナンスのリモートデプロイ
+./sanity-cli proxy <action> # SSH Proxy Daemon サービスの管理
+./sanity-cli sync_config    # ホスト側設定ファイルを実行中のコンテナにプッシュ
+./sanity-cli snapshot       # コンテナ状態を新しいローカライズイメージとして凍結
 ```
 
-### 🧩 マルチインスタンス・サポート
+---
 
-**複数のタスクを並行して実行する必要がありますか？** Sanity-Gravity は、複数の独立したサンドボックス・インスタンスの同時実行をサポートしています。`--name` 引数を使用して、異なるプロジェクト名を指定するだけです。
-
-```bash
-# 'dev-02' という名前の2つ目のインスタンスを開始
-./sanity-cli up -v core --name dev-02 --workspace /tmp/dev02
-```
-
-**競合ゼロ**: カスタム名を使用する場合、`sanity-cli` は利用可能なランダムなポートを自動的に検出して割り当てるため、ポートの競合を心配する必要はありません。割り当てられたポートは出力に明確に表示されます。
-
-特定のインスタンスを停止またはステータス確認するには：
-
-```bash
-./sanity-cli status --name dev-02
-./sanity-cli stop --name dev-02   # 一時停止 (データ保持)
-./sanity-cli down --name dev-02   # 削除 (コンテナ破棄)
-```
-
-### 📸 コンテナスナップショット (完全なコピー)
-
-セットアップの手順を繰り返すのはやめましょう！現在のコンテナの状態を新しいイメージとして「凍結」し、将来のインスタンスのベースとして使用できます。
-
-**使用シナリオ (Scenario)**: `my-base-env` コンテナで複雑な開発環境を手動でインストールしたり、Webサービスにログインしたりした後、その全く同じ状態を維持したまま、新しい実験的なプロジェクト `my-new-project` を分岐 (Fork) させたい場合。
-
-1.  **スナップショットの作成 (Create Snapshot)**:
-    コンテナを一時停止し、新しい Docker イメージとしてコミットし、整合性を検証します。
-    ```bash
-    ./sanity-cli snapshot --name my-base-env --tag my-verified-state:v1
-    ```
-
-2.  **スナップショットの使用 (Fork)**:
-    そのスナップショットをベースとして新しいプロジェクトを開始します。
-    > **注意**: カスタムイメージを使用する場合でも、正しいデスクトップ環境設定をロードするために、バリアント引数 (`-v kasm` または `-v vnc`) を指定する必要があります。
-    > **警告**: スナップショットから起動する場合、安定性を確保するために **Antigravity Agent のブラウザプロファイル** (Cookies/Sessionを含む) はリセットされます。
-    ```bash
-    # スナップショットから新しいインスタンス 'my-new-project' を開始
-    ./sanity-cli up -v kasm --name my-new-project --image my-verified-state:v1
-    ```
+## 高度な機能
 
 ### 🛠️ IDE のメンテナンスと安全なアップグレード (Gravity-CLI)
 
-Sanity-Gravity には、`apt upgrade` による IDE の意図しないアンインストールやクラッシュを防ぐ防衛メカニズムが組み込まれています。
+Sanity-Gravity には、OS レベルの `apt upgrade` による IDE や Google Chrome ブラウザの意図しないアンインストール、権限喪失やクラッシュを防ぐ防衛メカニズムが組み込まれています。
 
-ホストの管理とコンテナ内部のソフトウェア管理を厳密に分離しています：
-- **Host (ホスト側)**：`sanity-cli` がコンテナのライフサイクルを管理します。
-- **Inside (コンテナ内部)**：`gravity-cli` (組み込みスクリプト) が、`--no-sandbox` の保護を壊すことなく Antigravity IDE を安全に管理します。
+ホスト側の管理システムとコンテナ内部のソフトウェア管理を厳密に分離しています：
+- **Host (ホスト側)**：`sanity-cli` がコンテナのライフサイクルを管理します。メンテナンスコマンドを実行する際、最新の保護スクリプトを対象のコンテナに**自動的にホットインジェクト (hot-inject)** し、過去のすべてのレガシーイメージとの後方互換性を確保して修正プログラムを展開します。
+- **Inside (コンテナ内部)**：`gravity-cli` (コンテナ内蔵保護スクリプト) が、OS レベルの `dpkg-divert` を介して Antigravity IDE と Google Chrome ブラウザを安全に管理し、以降の APT アップデートによって `--no-sandbox` 権限の保護が決して無効化されないことを保証します。
 
 #### ホストから (Sanity-CLI の使用)
-IDE のクラッシュ (Google Gemini の強制更新などによる) が発生した場合、または IDE を安全に最新バージョンに更新したい場合は、ホストからリモートの `ide` コマンドを使用してください。
-> **注意**: `--name` パラメータは特定のインスタンスを対象とします (デフォルトは `sanity-gravity`)。複数の隔離された環境を並行して実行している場合は、メンテナンスするコンテナの名前を指定してください。
+IDE のクラッシュ (Google Gemini の強制更新によるブラウザの I/O エラーなど) が発生した場合、またはベースとなる Antigravity コアを安全に更新したい場合は、ホストからリモートの `ide` コマンドを使用します。
+> **注意**: 稼働中のインスタンスの `--name` については `./sanity-cli status` で確認してください。
 
 ```bash
-# apt を使用して Antigravity IDE を安全に最新パッケージに更新する
+# APT を利用し、安全に Antigravity IDE を最新パッケージへと更新する
 ./sanity-cli ide update --name sanity-gravity
 
-# 強力な修正：継続的なクラッシュを修正するため、完全に消去してクリーンインストールを行う
+# 強力な修復策：継続的なひどいクラッシュを修正するため、完全に消去してクリーンインストールを行う
 ./sanity-cli ide reinstall --name sanity-gravity
 ```
-*(これらのコマンドは、対象コンテナ内で root として `gravity-cli` スクリプトを自動的に呼び出すため、ホスト環境をクリーンに保ちます。)*
+*(これらのコマンドは、対象コンテナ内で root 権限で自動的に `gravity-cli` を呼び出し、ホスト環境をクリーンに保ったまま内部のみでアップグレードを完結させます。)*
 
 #### コンテナ内部で (Gravity-CLI の使用)
-すでにコンテナのシェルにいる場合 (例: `./sanity-cli shell` 経由) は、直接 `gravity-cli` ツールを使用できます。これらのコマンドは `root` 権限 (例: `sudo` を使用) で実行する必要があることに注意してください。
+すでにコンテナのシェルにいる場合 (`./sanity-cli shell` など)、直接 `gravity-cli` ツールを呼び出せます。この場合、`root` 権限 (`sudo` を使用するなど) が必要です。
 
 ```bash
-sudo gravity-cli update-ide    # 'sanity-cli ide update' と同等
-sudo gravity-cli reinstall-ide # 'sanity-cli ide reinstall' と同等
+sudo gravity-cli update-ide    # 'ide update' と同等
+sudo gravity-cli reinstall-ide # 'ide reinstall' と同等
 ```
+
+### 🔌 SSH エージェントプロキシ (Agent Proxy)
+
+Sanity-Gravity には、ホストとコンテナ間で SSH エージェントソケットを安全にブリッジするスマートなプロキシマネージャーが含まれています。これにより、コンテナ内部での `git push` や `git pull` の操作で、**プライベートキーをコンテナへコピーすることなく、ホストの認証情報を直接使用できます**。
+
+通常は `./sanity-cli up` によってすべてが自動処理されます。手動による修復を行う場合：
+```bash
+./sanity-cli proxy status   # デーモンとアクティブな接続の確認
+./sanity-cli proxy setup    # プロキシサービスの手動起動 / 修復
+./sanity-cli proxy remove   # プロキシサービスの終了
+```
+
+### 🧩 マルチインスタンス (Multi-Instance)
+
+**複数のタスクを並行処理する必要がありますか？** `--name` 引数を使用することで、無数の完全に独立したサンドボックスプロジェクトを同時に実行できます。
+
+```bash
+# 'dev-02' という名前で 2 番目のインスタンスを起動
+./sanity-cli up -v core --name dev-02 --workspace /tmp/dev02
+```
+**競合ゼロ保証**：カスタム名を使用する場合、`sanity-cli` はホスト上の利用可能なランダムポートを自動的に検出し、割り当てます。操作時はプロジェクト名でインスタンスを指定します (例: `./sanity-cli down --name dev-02`)。
+
+### 📸 コンテナスナップショット (Snapshots)
+
+設定済みの環境状態 (ソフトウェアのインストール、アクティブなログイン情報など) を新しいイメージとして「凍結」し、それをベースにフォーク (分岐) させることができます。
+
+1. **スナップショットの作成 (Freeze)**:
+   ```bash
+   ./sanity-cli snapshot --name my-base-env --tag my-verified-state:v1
+   ```
+2. **スナップショットの利用 (Fork)**:
+   ```bash
+   ./sanity-cli up -v kasm --name new-experiment --image my-verified-state:v1
+   ```
+
+### 🔄 ランタイム設定同期 (Runtime Config Sync)
+ホストの `host_config.py` 変数を更新し、コンテナをシャットダウンすることなく適用したい場合は、`./sanity-cli sync_config` を実行するだけで稼働中のコンテナに設定が即座に同期されます。
+
+---
 
 ## バリアント (Variants)
 
-| バリアント | 技術スタック     | 最適な用途                          | アクセス                                   |
-| :--------- | :--------------- | :---------------------------------- | :----------------------------------------- |
-| **`kasm`** | KasmVNC          | **Web ベースのデスクトップ (推奨)** | `https://localhost:8444`                   |
-| **`vnc`**  | TigerVNC + noVNC | レガシー VNC クライアント           | `localhost:5901` / `http://localhost:6901` |
-| **`core`** | SSH のみ         | ヘッドレス / ターミナルエージェント | `ssh -p <port> developer@localhost`        |
+| バリアント (Variant) | 技術スタック     | 最適な用途                                         | アクセス方法                               |
+| :------------------- | :--------------- | :------------------------------------------------- | :----------------------------------------- |
+| **`kasm`**           | KasmVNC          | **最高のスムーズさを誇る Web デスクトップ (推奨)** | `https://localhost:8444`                   |
+| **`vnc`**            | TigerVNC + noVNC | 従来の VNC クライアントおよび端末の直接接続        | `localhost:5901` / `http://localhost:6901` |
+| **`core`**           | SSH のみサポート | ヘッドレス制御 / ターミナルオンリーの開発環境      | `ssh -p <port> developer@localhost`        |
 
-## SSH アクセス
+## SSH アクセス (SSH Access)
 
-すべてのバリアント（GUI バリアントの Kasm/VNC を含む）で、デフォルトで SSH が有効になっています。これにより、強力なハイブリッドワークフローが可能になります:
+すべてのバリアント (GUI インターフェイスを搭載したバージョンを含む) は、デフォルトで `Port 2222` を介した SSH 接続が有効になっています。これにより様々な強力な開発環境構築が可能になります。
 
-*   **ヘッドレス制御**: デスクトップを開かずに CLI 経由で GUI ツールを自動化できます。
-*   **ポートフォワーディング**: コンテナ内の Web アプリやデバッガをホストに転送できます (例: `ssh -L 3000:localhost:3000 ...`)。
-*   **ファイル転送**: `scp` や `sftp` を使用して、ビルド成果物を簡単に移動できます。
-*   **リモート開発**: エージェントがサンドボックスで実行されている間、ホスト上の VS Code / JetBrains IDE を SSH 経由で接続し、快適にコーディングできます。
-
-**デフォルトポート**: `2222` (`--ssh-port` で設定可能)
-**認証情報**: ユーザー `(あなたのホストユーザー名)` / パスワード `antigravity` (またはカスタム)
+*   **ヘッドレス制御 (Headless)**: デスクトップを開くことなく、CLI から GUI ツールをバックグラウンドで操作。
+*   **ポートフォワーディング (Port Forwarding)**: `-L` を使用し、テスト用の Web アプリやデータベースをホストに向けて容易にトンネリング (例: `ssh -L 3000:localhost:3000 ...`)。
+*   **リモート開発 (Remote Development)**: ローカルの VS Code や JetBrains IDE から Remote SSH 拡張機能を使用し、安全かつ最高の快適さを備えた編集体験を得る。
 
 ```bash
-# 例: Kasm バリアントに接続
+# 接続の例 (パスワードは設定値 または antigravity)
 ssh -p 2222 developer@localhost
 ```
 
-## プロジェクト構造
-
-リポジトリ構成の概要:
+## プロジェクト構造 (Project Structure)
 
 ```text
 sanity-gravity/
-├── sanity-cli          # 🛠️ メイン CLI エントリーポイント (Python スクリプト)
-├── sandbox/            # 📦 Docker ビルドコンテキストと設定
-│   ├── variants/       #    - 各バリアントの Dockerfile (core, kasm, vnc)
-│   └── rootfs/         #    - 共有オーバーレイ (スクリプト, 設定ファイル)
+├── sanity-cli          # 🛠️ メインとなる管理および入力用 CLI (Python)
+├── sandbox/            # 📦 Docker 構築コンテキストと設定
+│   ├── variants/       #    - 各バリアント用の Dockerfiles (core, kasm, vnc)
+│   └── rootfs/         #    - 共有オーバーレイファイル (スクリプトと設定情報)
 ├── tests/              # 🧪 Pytest 統合テストスイート
-├── workspace/          # 📂 マウントされたユーザーディレクトリ (永続データ)
-└── .github/            # 🐙 CI/CD ワークフローと Issue テンプレート
+├── workspace/          # 📂 永続化された作業領域 (マウント先)
+└── .github/            # 🐙 CI/CD ルールと Git バージョンテンプレート
 ```
 
 ## 名前の由来 (What's in a Name?)
 
-> **"Sanity-Gravity"** に込められた意味: 野生的な **Antigravity** (反重力/AI エージェント) の世界に強力な **Gravity** (重力/制約) を提供し、開発者の **Sanity** (正気) を保つこと。
+> **"Sanity-Gravity"** は、予測不可能な **「反重力 (Antigravity)」** 人工知能エージェントの荒波に対して、確固たる **「重力 (Gravity)」** による制約を提供し、開発者たちの **「正気・理智 (Sanity)」** を守り抜くことを意味しています。
 
-*   **Sanity (正気)**: ホスト環境を「正常」に保ちます。予測不可能な Agentic AI の実行を使い捨てのコンテナに閉じ込めることで、偶発的な損害 (例: `rm -rf /`) や設定汚染を防ぎます。
-*   **Gravity (重力)**: **Antigravity** システムに「接地」された実行環境を提供します。浮遊する AI エージェントに、物理法則 (隔離) に拘束されたまま、ツールと対話し世界に影響を与えるための具体的な着地点を与えます。
+制御不能な AI による実行を使い捨てのサンドボックス空間に監視下に置くことで、`rm -rf /` のような予期せぬ破壊や、パスワード、環境情報の流出・汚染といった取り返しのつかない損害を未然に防ぎます。
 
 ## ライセンス (License)
-
-このプロジェクトは **Apache License 2.0** の下でライセンスされています。詳細については [LICENSE](LICENSE) を参照してください。
+MIT License
