@@ -43,7 +43,7 @@ class TestCLI:
         
         # Test Run (Core is fastest)
         # Note: 'run' via CLI attaches to foreground if we don't be careful?
-        # sanity-cli run uses 'docker compose up -d' so it returns.
+        # sanity-cli up uses 'docker compose up -d' so it returns.
         res = cli("run -v core --ssh-port 2299 --skip-check --password testcli")
         assert res.returncode == 0
         assert "core is running" in res.stdout

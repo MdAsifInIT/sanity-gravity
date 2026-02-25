@@ -10,7 +10,7 @@ Thank you for your interest in contributing to Sanity-Gravity! We welcome commun
     *   Update `sanity-cli` to handle the new variant if necessary (though it auto-detects most valid targets).
 3.  **Test your changes**:
     *   Run `./sanity-cli build <variant>` to ensure it builds.
-    *   Run `./sanity-cli run -v <variant>` to ensure it starts.
+    *   Run `./sanity-cli up -v <variant>` to ensure it starts.
     *   Run existing tests: `python3 -m unittest discover tests`.
 4.  **Submit a Pull Request**:
     *   Describe your changes clearly.
