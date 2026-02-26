@@ -16,9 +16,9 @@
 
 ## TL;DR
 
-**Sanity-Gravity** is a modern, zero-configuration GUI sandbox tailored for Agentic AI workflows. It completely confines all potentially high-risk actions into disposable Docker containers while seamlessly streaming a full XFCE4 desktop experience to your browser.
+**Sanity-Gravity** is a modern, zero-configuration GUI sandbox tailored for Antigravity workflows. It completely confines all potentially high-risk actions into disposable Docker containers while seamlessly streaming a full XFCE4 desktop experience to your browser.
 
-**Spin up a secure AI playground in seconds:**
+**Spin up a secure Antigravity development environment in seconds:**
 
 ```bash
 # 1. Build the base images
@@ -61,7 +61,7 @@ Your secure desktop is ready, go to **https://localhost:8444**!
 | **🚀 Out-of-the-Box**    | Pre-installed with **Antigravity IDE**, Google Chrome, Git, etc. Zero setup time required.                             |
 | **🔌 Seamless Disk I/O** | Smartly maps to your host's UID/GID. No more root-owned file disasters after host volume mounts.                       |
 | **🧩 Multi-Instance**    | Parallelize tasks with isolated sandboxes. The system automatically assigns clean ports avoiding conflicts.            |
-| **📸 Freeze Snapshots**  | Freeze the customized environment state (installed software, active logins) into a new image branch instantly.         |
+| **📸 Freeze Snapshots**  | Quickly freeze the customized environment state (installed software, active logins) into a new image branch.           |
 | **🔄 IDE Safe Upgrade**  | Built-in scripts manage Agentic IDE updates remotely, strictly bypassing destructive `apt upgrade` behaviors.          |
 | **🔑 SSH Agent Proxy**   | Securely pass host SSH credentials to the container. Execute Git operations freely without copying private keys.       |
 
@@ -150,7 +150,7 @@ If you experience IDE crashes or just want to safely update the underlying Antig
 # Nuclear Option: Complete wipe and clean reinstall to fix persistent crashes
 ./sanity-cli ide reinstall --name sanity-gravity
 ```
-*(These commands automatically invoke the proxy `gravity-cli` as root strictly inside the target container, eliminating host pollution.)*
+*(These commands automatically invoke the gravity-cli script as root, keeping all protection and upgrade procedures entirely within the container to maintain a pristine host environment.)*
 
 #### Inside the Container (Using Gravity-CLI)
 If you are already inside the container shell (via `./sanity-cli shell`), directly use the CLI. Note that you must be `root`.
