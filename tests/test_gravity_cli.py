@@ -2,6 +2,7 @@ import subprocess
 import os
 import tempfile
 import stat
+import textwrap
 
 GRAVITY_CLI_PATH = os.path.abspath("sandbox/rootfs/usr/local/bin/gravity-cli")
 
@@ -66,7 +67,47 @@ def test_gravity_cli_update_ide_success():
         assert os.path.exists(ag_wrapper_path)
         with open(ag_wrapper_path, "r") as f:
             ag_wrapper_content = f.read()
-        assert ag_wrapper_content == f'#!/bin/bash\nexec {tmpdir}/antigravity/antigravity-original --no-sandbox "$@"\n'
+            
+        expected_wrapper = textwrap.dedent(f"""\
+            #!/bin/bash
+            # Master Wrapper for Antigravity in Kasm Sandbox
+            
+            # 1. Stale Socket Cleanup (Prevention for Singleton Lock)
+            if [ "$ELECTRON_RUN_AS_NODE" != "1" ]; then
+                rm -f "$HOME/.config/Antigravity/1.10-main.sock" 2>/dev/null
+                rm -f "$HOME/.config/Antigravity/SingletonSocket" 2>/dev/null
+                rm -f "$HOME/.config/Antigravity/SingletonCookie" 2>/dev/null
+                rm -f "$HOME/.config/Antigravity/singleton-cookie" 2>/dev/null
+            fi
+            
+            # 2. Environment Fix for Electron Children
+            export ELECTRON_DISABLE_SANDBOX=1
+            
+            # 3. Process Type Detection
+            IS_GUI_CHILD=0
+            for arg in "$@"; do
+                if [[ "$arg" == --type=* ]]; then
+                    IS_GUI_CHILD=1
+                    break
+                fi
+            done
+            
+            # 4. Execution Logic
+            if [ "$ELECTRON_RUN_AS_NODE" = "1" ] && [ "$IS_GUI_CHILD" = "0" ] && [[ "$*" == *cli.js* ]]; then
+                # Pure CLI Node mode - NO sandbox flags allowed here
+                exec {tmpdir}/antigravity/antigravity-bin "$@"
+            fi
+            
+            # Everything else is a GUI process or a child process requiring Chromium flags
+            unset ELECTRON_RUN_AS_NODE
+            exec {tmpdir}/antigravity/antigravity-bin \\
+                --no-sandbox \\
+                --disable-dev-shm-usage \\
+                --disable-zygote \\
+                --disable-namespace-sandbox \\
+                "$@"
+            """)
+        assert ag_wrapper_content == expected_wrapper
 
         # Verify Google Chrome robust wrapper creation
         chrome_wrapper_path = os.path.join(tmpdir, "opt", "google", "chrome", "google-chrome")
@@ -123,7 +164,47 @@ def test_gravity_cli_reinstall_ide_success():
         assert os.path.exists(ag_wrapper_path)
         with open(ag_wrapper_path, "r") as f:
             ag_wrapper_content = f.read()
-        assert ag_wrapper_content == f'#!/bin/bash\nexec {tmpdir}/antigravity/antigravity-original --no-sandbox "$@"\n'
+        
+        expected_wrapper = textwrap.dedent(f"""\
+            #!/bin/bash
+            # Master Wrapper for Antigravity in Kasm Sandbox
+            
+            # 1. Stale Socket Cleanup (Prevention for Singleton Lock)
+            if [ "$ELECTRON_RUN_AS_NODE" != "1" ]; then
+                rm -f "$HOME/.config/Antigravity/1.10-main.sock" 2>/dev/null
+                rm -f "$HOME/.config/Antigravity/SingletonSocket" 2>/dev/null
+                rm -f "$HOME/.config/Antigravity/SingletonCookie" 2>/dev/null
+                rm -f "$HOME/.config/Antigravity/singleton-cookie" 2>/dev/null
+            fi
+            
+            # 2. Environment Fix for Electron Children
+            export ELECTRON_DISABLE_SANDBOX=1
+            
+            # 3. Process Type Detection
+            IS_GUI_CHILD=0
+            for arg in "$@"; do
+                if [[ "$arg" == --type=* ]]; then
+                    IS_GUI_CHILD=1
+                    break
+                fi
+            done
+            
+            # 4. Execution Logic
+            if [ "$ELECTRON_RUN_AS_NODE" = "1" ] && [ "$IS_GUI_CHILD" = "0" ] && [[ "$*" == *cli.js* ]]; then
+                # Pure CLI Node mode - NO sandbox flags allowed here
+                exec {tmpdir}/antigravity/antigravity-bin "$@"
+            fi
+            
+            # Everything else is a GUI process or a child process requiring Chromium flags
+            unset ELECTRON_RUN_AS_NODE
+            exec {tmpdir}/antigravity/antigravity-bin \\
+                --no-sandbox \\
+                --disable-dev-shm-usage \\
+                --disable-zygote \\
+                --disable-namespace-sandbox \\
+                "$@"
+            """)
+        assert ag_wrapper_content == expected_wrapper
 
         # Verify Google Chrome robust wrapper creation
         chrome_wrapper_path = os.path.join(tmpdir, "opt", "google", "chrome", "google-chrome")

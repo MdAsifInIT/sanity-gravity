@@ -60,9 +60,11 @@ RUN mkdir -p /etc/apt/keyrings && \
 # Fix Antigravity IDE sandbox issue (Binary Wrapper Method)
 # We wrap the actual electron binary to ensure --no-sandbox is ALWAYS applied
 # regardless of how it's invoked (CLI, GUI, or subprocess)
-RUN dpkg-divert --add --rename --divert /usr/share/antigravity/antigravity-original /usr/share/antigravity/antigravity && \
-    echo '#!/bin/bash\nexec /usr/share/antigravity/antigravity-original --no-sandbox --disable-dev-shm-usage "$@"' > /usr/share/antigravity/antigravity && \
+RUN dpkg-divert --add --rename --divert /usr/share/antigravity/antigravity-bin /usr/share/antigravity/antigravity && \
+    printf '#!/bin/bash\n\n# 1. Stale Socket Cleanup\nif [ "$ELECTRON_RUN_AS_NODE" != "1" ]; then\n    rm -f "$HOME/.config/Antigravity/1.10-main.sock" 2>/dev/null\n    rm -f "$HOME/.config/Antigravity/SingletonSocket" 2>/dev/null\n    rm -f "$HOME/.config/Antigravity/SingletonCookie" 2>/dev/null\n    rm -f "$HOME/.config/Antigravity/singleton-cookie" 2>/dev/null\nfi\n\n# 2. Environment Fix for Electron Children\nexport ELECTRON_DISABLE_SANDBOX=1\n\n# 3. Process Type Detection\nIS_GUI_CHILD=0\nfor arg in "$@"; do\n    if [[ "$arg" == --type=* ]]; then\n        IS_GUI_CHILD=1\n        break\n    fi\ndone\n\n# 4. Execution Logic\nif [ "$ELECTRON_RUN_AS_NODE" = "1" ] && [ "$IS_GUI_CHILD" = "0" ] && [[ "$*" == *cli.js* ]]; then\n    exec /usr/share/antigravity/antigravity-bin "$@"\nfi\n\nunset ELECTRON_RUN_AS_NODE\nexec /usr/share/antigravity/antigravity-bin --no-sandbox --disable-dev-shm-usage --disable-zygote --disable-namespace-sandbox "$@"\n' > /usr/share/antigravity/antigravity && \
     chmod +x /usr/share/antigravity/antigravity && \
+    cp /usr/share/antigravity/antigravity /usr/share/antigravity/antigravity-original && \
+    chmod +x /usr/share/antigravity/antigravity-original && \
     if [ -f /usr/share/applications/antigravity.desktop ]; then \
         sed -i 's|Exec=/usr/bin/antigravity|Exec=/usr/bin/antigravity --no-sandbox|g' /usr/share/applications/antigravity.desktop; \
     fi
