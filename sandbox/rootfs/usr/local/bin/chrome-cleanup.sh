@@ -31,4 +31,12 @@ rm -rf "$CHROME_CONFIG/Default/GPUCache"
 # 5. IPC & Shared Memory Debris in /tmp
 find /tmp -name ".org.chromium.Chromium*" -user $USER -delete 2>/dev/null || true
 
+# 6. Antigravity Singleton Sockets (Prevent Stale Locks on Restart)
+# Only clean these up at container/desktop startup to avoid interfering
+# with running instances and Auth Redirect URIs.
+rm -f "$HOME/.config/Antigravity/1.10-main.sock"
+rm -f "$HOME/.config/Antigravity/SingletonSocket"
+rm -f "$HOME/.config/Antigravity/SingletonCookie"
+rm -f "$HOME/.config/Antigravity/singleton-cookie"
+
 echo "$(date): [chrome-cleanup] Cleanup completed for user $USER" >> /tmp/chrome-cleanup.log
