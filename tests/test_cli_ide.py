@@ -36,10 +36,12 @@ class TestIdeCommand:
         cname = "sanity-gravity-core-1"
         base_dir = os.path.dirname(os.path.abspath(sanity_cli.__file__))
         cli_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli")
+        cleanup_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "chrome-cleanup.sh")
         
         expected_calls = [
             ((f"docker cp {cli_src} {cname}:/usr/local/bin/gravity-cli",), {"shell": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
-            ((f"docker exec -u root {cname} chmod +x /usr/local/bin/gravity-cli",), {"shell": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
+            ((f"docker cp {cleanup_src} {cname}:/usr/local/bin/chrome-cleanup.sh",), {"shell": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
+            ((f"docker exec -u root {cname} chmod +x /usr/local/bin/gravity-cli /usr/local/bin/chrome-cleanup.sh",), {"shell": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
             ((f"docker exec -it -u root {cname} /usr/local/bin/gravity-cli update-ide",), {"shell": True})
         ]
         assert mock_check_call.call_args_list == expected_calls
@@ -58,10 +60,12 @@ class TestIdeCommand:
         cname = "my-project-core-1"
         base_dir = os.path.dirname(os.path.abspath(sanity_cli.__file__))
         cli_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli")
+        cleanup_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "chrome-cleanup.sh")
         
         expected_calls = [
             ((f"docker cp {cli_src} {cname}:/usr/local/bin/gravity-cli",), {"shell": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
-            ((f"docker exec -u root {cname} chmod +x /usr/local/bin/gravity-cli",), {"shell": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
+            ((f"docker cp {cleanup_src} {cname}:/usr/local/bin/chrome-cleanup.sh",), {"shell": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
+            ((f"docker exec -u root {cname} chmod +x /usr/local/bin/gravity-cli /usr/local/bin/chrome-cleanup.sh",), {"shell": True, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
             ((f"docker exec -it -u root {cname} /usr/local/bin/gravity-cli reinstall-ide",), {"shell": True})
         ]
         assert mock_check_call.call_args_list == expected_calls

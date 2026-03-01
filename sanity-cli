@@ -1242,15 +1242,18 @@ def ide_cmd(args):
     
     # Always hot-inject the latest gravity-cli into the container to ensure
     # legacy environments receive the latest bugfixes and protection logic.
-    print_info("Hot-injecting latest gravity-cli for compatibility...")
+    print_info("Hot-injecting latest gravity-cli and chrome-cleanup for compatibility...")
     base_dir = os.path.dirname(os.path.abspath(__file__))
     cli_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli")
+    cleanup_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "chrome-cleanup.sh")
     
     inject_cmd_1 = f"docker cp {cli_src} {container_name}:/usr/local/bin/gravity-cli"
-    inject_cmd_2 = f"docker exec -u root {container_name} chmod +x /usr/local/bin/gravity-cli"
+    inject_cmd_1_b = f"docker cp {cleanup_src} {container_name}:/usr/local/bin/chrome-cleanup.sh"
+    inject_cmd_2 = f"docker exec -u root {container_name} chmod +x /usr/local/bin/gravity-cli /usr/local/bin/chrome-cleanup.sh"
     
     try:
         subprocess.check_call(inject_cmd_1, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.check_call(inject_cmd_1_b, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.check_call(inject_cmd_2, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
         print_error("Failed to hot-inject gravity-cli. Container might be highly incompatible.")
