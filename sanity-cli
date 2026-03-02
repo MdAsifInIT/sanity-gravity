@@ -1394,9 +1394,11 @@ def main():
     ide_subparsers = parser_ide.add_subparsers(dest="ide_command", required=True)
     
     ide_update = ide_subparsers.add_parser("update", help="Update the IDE to the latest package version via apt")
+    ide_update.add_argument("--name", "-n", default="sanity-gravity", help="Project name")
     ide_update.set_defaults(func=ide_cmd, ide_command="update-ide")
     
     ide_reinstall = ide_subparsers.add_parser("reinstall", help="Cleanly purge and reinstall the IDE to fix crashes")
+    ide_reinstall.add_argument("--name", "-n", default="sanity-gravity", help="Project name")
     ide_reinstall.set_defaults(func=ide_cmd, ide_command="reinstall-ide")
     
     # Test Command
