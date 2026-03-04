@@ -15,6 +15,10 @@ services:
     ports:
       - "${SSH_HOST_PORT:-2222}:22"
     network_mode: bridge
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     labels:
       sanity.gravity.managed: "true"
 
@@ -35,6 +39,10 @@ services:
       - ${WORKSPACE_DIR:-./workspace}:/home/${HOST_USER:-developer}/workspace
     shm_size: 512m
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     labels:
       sanity.gravity.managed: "true"
 
@@ -59,5 +67,9 @@ services:
       - ${WORKSPACE_DIR:-./workspace}:/home/${HOST_USER:-developer}/workspace
     shm_size: 512m
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     labels:
       sanity.gravity.managed: "true"
