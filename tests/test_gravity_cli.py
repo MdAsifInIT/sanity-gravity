@@ -85,7 +85,7 @@ def test_gravity_cli_update_ide_success():
             done
             
             # 3. Execution Logic
-            if [ "$ELECTRON_RUN_AS_NODE" = "1" ] && [ "$IS_GUI_CHILD" = "0" ] && [[ "$*" == *cli.js* ]]; then
+            if [ "$ELECTRON_RUN_AS_NODE" = "1" ] && [ "$IS_GUI_CHILD" = "0" ]; then
                 # Pure CLI Node mode - NO sandbox flags allowed here
                 exec {tmpdir}/antigravity/antigravity-bin "$@"
             fi
@@ -174,7 +174,7 @@ def test_gravity_cli_reinstall_ide_success():
             done
             
             # 3. Execution Logic
-            if [ "$ELECTRON_RUN_AS_NODE" = "1" ] && [ "$IS_GUI_CHILD" = "0" ] && [[ "$*" == *cli.js* ]]; then
+            if [ "$ELECTRON_RUN_AS_NODE" = "1" ] && [ "$IS_GUI_CHILD" = "0" ]; then
                 # Pure CLI Node mode - NO sandbox flags allowed here
                 exec {tmpdir}/antigravity/antigravity-bin "$@"
             fi
