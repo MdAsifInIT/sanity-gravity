@@ -114,8 +114,18 @@ class ProxyManager:
         # We need to remove the socket file if it exists (stale) to let socat create it
         if os.path.exists(self.socket_path):
             try:
-                os.remove(self.socket_path)
-            except Exception:
+                if os.path.isdir(self.socket_path):
+                    shutil.rmtree(self.socket_path)
+                else:
+                    os.remove(self.socket_path)
+            except Exception as e:
+                # If we fail to remove it, it might be root owned (common Docker issue)
+                if os.path.isdir(self.socket_path):
+                    raise RuntimeError(
+                        f"Conflict: '{self.socket_path}' is a directory and cannot be removed.\n"
+                        f"This often happens when Docker automatically creates a directory for a missing volume source.\n"
+                        f"Please run: sudo rm -rf {self.socket_path}"
+                    ) from e
                 pass
                 
         os.makedirs(self.bridge_dir, exist_ok=True)
