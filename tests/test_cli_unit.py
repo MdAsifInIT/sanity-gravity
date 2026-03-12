@@ -138,10 +138,11 @@ class TestConfigSync:
             # Verify files copied from host
             assert mock_copy.call_count >= 2
             
-            # Verify docker commands (mkdir and cp)
-            # We expect: mkdir -p ... and docker cp config/. ...
+            # Verify docker commands (mkdir and tar)
+            # We expect: mkdir -p ... and tar ... | docker exec -i ...
             docker_cmds = [args[0][0] for args in mock_run.call_args_list]
-            assert any("docker cp config/." in cmd for cmd in docker_cmds)
+            assert any("tar -cf -" in cmd for cmd in docker_cmds)
+            assert any("docker exec -i test-container tar -xf -" in cmd for cmd in docker_cmds)
 
     def test_sync_config_safe_simulation(self):
         """Test sync_config with a custom source directory (simulation)."""
@@ -161,17 +162,17 @@ class TestConfigSync:
                 # Call sync_config with the temp dir as source
                 sanity_cli.sync_config("safe-proj", "safe-container", "user", config_source=temp_config_dir)
                 
-                # Check that docker cp was called with the temp dir
+                # Check that tar command was called with the temp dir
                 docker_cmds = [args[0][0] for args in mock_run.call_args_list]
-                
-                # We expect: docker cp {temp_config_dir}/. safe-container:/home/user/.gemini/
-                expected_cp_part = f"docker cp {temp_config_dir}/."
-                
-                # Filter commands that are copy commands
-                cp_commands = [cmd for cmd in docker_cmds if "docker cp" in cmd]
-                
-                assert len(cp_commands) > 0, "No docker cp command found"
-                assert expected_cp_part in cp_commands[0], f"Expected source {temp_config_dir} in {cp_commands[0]}"
+    
+                # We expect: tar -cf - -C {temp_config_dir} ...
+                expected_tar_part = f"tar -cf - -C {temp_config_dir}"
+    
+                # Filter commands that are tar commands
+                tar_commands = [cmd for cmd in docker_cmds if "tar -cf -" in cmd]
+    
+                assert len(tar_commands) > 0, "No tar sync command found"
+                assert any(expected_tar_part in cmd for cmd in tar_commands)
                 
                 # Also verify mkdir and chown calls
                 assert any("mkdir -p /home/user/.gemini" in cmd for cmd in docker_cmds)

@@ -475,8 +475,10 @@ def sync_config(project_name, container_name, username, config_source="config"):
         run_command(f"docker exec {container_name} mkdir -p {target_dir}")
         
         # Copy config files
-        # We copy the whole directory content which now only contains what we put in it (GEMINI.md, settings.json)
-        run_command(f"docker cp {config_dir}/. {container_name}:{target_dir}/")
+        # Use tar pipe instead of docker cp to allow exclusions of runtime state
+        print_info("Transferring files (excluding runtime state)...")
+        exclude_flags = "--exclude='antigravity/daemon' --exclude='antigravity-browser-profile'"
+        run_command(f"tar -cf - -C {config_dir} {exclude_flags} . | docker exec -i {container_name} tar -xf - -C {target_dir}")
         
         # Fix permissions (docker cp makes it root owned)
         out = run_command(f"docker exec {container_name} chown -R {username}:{username} {target_dir}", capture=True, check=False)

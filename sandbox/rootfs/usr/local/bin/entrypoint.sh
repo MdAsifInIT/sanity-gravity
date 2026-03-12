@@ -110,6 +110,7 @@ dbus-daemon --system --fork
 
 ANTIGRAVITY_DIRS=(
     "/home/$USER_NAME/.gemini/antigravity-browser-profile"
+    "/home/$USER_NAME/.gemini/antigravity/daemon"
 )
 
 for dir in "${ANTIGRAVITY_DIRS[@]}"; do
