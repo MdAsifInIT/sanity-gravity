@@ -237,4 +237,4 @@ sanity-gravity/
 By confining unpredictable AI execution to a disposable container, we stop accidental commands (e.g., `rm -rf /`) and configuration pollution.
 
 ## License
-MIT License
+Apache License 2.0

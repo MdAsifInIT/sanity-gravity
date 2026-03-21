@@ -257,4 +257,4 @@ sanity-gravity/
 
 ## Licence
 
-MIT License
+Apache License 2.0
