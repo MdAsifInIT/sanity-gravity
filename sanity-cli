@@ -103,9 +103,10 @@ def build(args):
     
     print_header(f"Building Variants: {', '.join(targets)}")
     
+    no_cache_flag = " --no-cache" if getattr(args, "no_cache", False) else ""
     for target in targets:
         print_info(f"Building {target}...")
-        run_command(f"docker compose -f {COMPOSE_FILE} build {target}")
+        run_command(f"docker compose -f {COMPOSE_FILE} build{no_cache_flag} {target}")
     
     print_success("Build complete!")
 
@@ -596,6 +597,28 @@ def start(args):
 def restart(args):
     """Restarts sandbox containers (docker compose restart)."""
     run_compose_cmd(args, "restart")
+
+def clean(args):
+    """Deep cleanup: removes containers, volumes, local images and orphans."""
+    project_name = args.name
+    print_header(f"Deep Cleaning Sandbox ({project_name})")
+    
+    # We use a strict cleanup policy to ensure no stale state remains
+    # -v: Remove named volumes (clears user config/session)
+    # --rmi local: Remove local images
+    # --remove-orphans: Remove containers not defined in the compose file
+    cmd = f"docker compose -p {project_name} -f {COMPOSE_FILE} down -v --rmi local --remove-orphans"
+    
+    if not args.force:
+        print(f"{Colors.WARNING}CAUTION: This will destroy ALL data in volumes for project '{project_name}'.{Colors.ENDC}")
+        if sys.stdin.isatty():
+            choice = input(f"{Colors.BOLD}Proceed with deep clean? [y/N]: {Colors.ENDC}").lower().strip()
+            if choice != 'y':
+                print_info("Cleanup cancelled.")
+                return
+    
+    run_command(cmd)
+    print_success("Deep cleanup complete.")
 
 def get_managed_projects():
     """Found projects managed by this tool (have the specific label)."""
@@ -1278,6 +1301,7 @@ def main():
     # Build Command
     parser_build = subparsers.add_parser("build", help="Build sandbox images")
     parser_build.add_argument("variant", nargs="*", help="Variant to build (default: all)", default=["all"])
+    parser_build.add_argument("--no-cache", action="store_true", help="Do not use cache when building image")
     parser_build.set_defaults(func=build)
 
     # Install Command (Alias)
@@ -1323,6 +1347,12 @@ def main():
     parser_down = subparsers.add_parser("down", help="Stop and remove containers (docker compose down)")
     parser_down.add_argument("--name", "-n", default="sanity-gravity", help="Project name (default: sanity-gravity)")
     parser_down.set_defaults(func=down)
+
+    # Clean Command (Deep cleanup)
+    parser_clean = subparsers.add_parser("clean", help="Deep cleanup: remove containers, volumes and local images")
+    parser_clean.add_argument("--name", "-n", default="sanity-gravity", help="Project name (default: sanity-gravity)")
+    parser_clean.add_argument("--force", "-f", action="store_true", help="Force cleanup without confirmation")
+    parser_clean.set_defaults(func=clean)
 
     # Stop Command (New behavior)
     parser_stop = subparsers.add_parser("stop", help="Stop containers without removing (docker compose stop)")
