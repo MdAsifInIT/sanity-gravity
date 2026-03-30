@@ -6,7 +6,11 @@ set -e
 export USER=${USER}
 export HOME=${HOME}
 
-# Cleanup locks
+# Generate SSL certificate if missing (moved from Dockerfile for per-container uniqueness)
+if [ ! -f /etc/ssl/certs/ssl-cert-snakeoil.pem ]; then
+    sudo make-ssl-cert generate-default-snakeoil --force-overwrite
+fi
+
 # Cleanup locks
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
 

@@ -117,5 +117,11 @@ if [ ! -f "/opt/google/chrome/google-chrome" ]; then
     ln -sf /usr/bin/google-chrome /opt/google/chrome/google-chrome
 fi
 
+# Regenerate SSH host keys if missing (removed from image for security)
+if [ ! -f /etc/ssh/ssh_host_ed25519_key ]; then
+    echo "Generating SSH host keys..."
+    ssh-keygen -A
+fi
+
 # Execute CMD (Supervisord)
 exec "$@"
