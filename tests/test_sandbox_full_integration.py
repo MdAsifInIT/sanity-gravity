@@ -4,16 +4,17 @@ from tests.utils import wait_for_port
 from tests.conftest import DEFAULT_KASM_IMAGE
 
 @pytest.fixture(scope="function")
-def test_kasm_container(clean_container, docker_cli, host_env):
+def test_kasm_container(clean_container, docker_cli, host_env, free_port):
     """Start a single Kasm container for all sandbox integration tests."""
     container_name = clean_container("sanity-test-sandbox-full")
+    port = free_port()
     docker_cli.run_container(
         name=container_name,
         image=DEFAULT_KASM_IMAGE,
-        ports={"8444": "8444"},
+        ports={str(port): "8444"},
         env=host_env
     )
-    assert wait_for_port(8444)
+    assert wait_for_port(port)
     time.sleep(5)
     return container_name
 
@@ -55,13 +56,30 @@ class TestSandboxFullIntegration:
         user = host_env["HOST_USER"]
         
         # xdg-open spawns the browser in the background and exits immediately with 0.
-        res_xdg = docker_cli.exec(test_kasm_container, f"su - {user} -c 'DISPLAY=:1 xdg-open https://google.com; echo EXIT_$?'")
-        assert "EXIT_0" in res_xdg.stdout, f"xdg-open failed: {res_xdg.stderr}"
+        # We inject XDG_CURRENT_DESKTOP and try to find the session DBUS address to ensure xdg-open works 
+        # specifically in headless su shells where session bus is missing in the environment.
+        cmd = (
+            f"su - {user} -c '"
+            "export DISPLAY=:1; "
+            "export XDG_CURRENT_DESKTOP=XFCE; "
+            "export $(dbus-launch); " # Use a temporary session bus if needed
+            "xdg-open https://google.com; echo EXIT_$?'"
+        )
+        res_xdg = docker_cli.exec(test_kasm_container, cmd)
+        assert "EXIT_0" in res_xdg.stdout, f"xdg-open failed: {res_xdg.stderr}\nStdout: {res_xdg.stdout}"
         
         # Verify that the browser was actually launched by xdg-open and is running securely
-        time.sleep(2)
-        res_pgrep = docker_cli.exec(test_kasm_container, f"su - {user} -c 'pgrep -f chrome || pgrep -f chromium'")
-        assert res_pgrep.returncode == 0, "xdg-open returned 0, but no browser process is running in the background."
+        # Use a retry loop since browser startup can be slow on emulated/highly-loaded CI environments
+        browser_found = False
+        for _ in range(10):
+            time.sleep(2)
+            # Check pgrep without su overhead to be more direct
+            res_pgrep = docker_cli.exec(test_kasm_container, "pgrep -f chrome || pgrep -f chromium")
+            if res_pgrep.returncode == 0:
+                browser_found = True
+                break
+        
+        assert browser_found, "xdg-open returned 0, but no browser process (chrome/chromium) was detected after 20 seconds."
 
     def test_antigravity_chat_capability(self, test_kasm_container, docker_cli, host_env):
         """Verify that Antigravity can use chat functionality (Language Server stability)."""

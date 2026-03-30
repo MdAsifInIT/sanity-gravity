@@ -4,19 +4,20 @@ from tests.conftest import DEFAULT_CORE_IMAGE
 import time
 
 class TestCore:
-    def test_core_startup(self, clean_container, docker_cli, host_env):
+    def test_core_startup(self, clean_container, docker_cli, host_env, free_port):
         container_name = clean_container("sanity-test-core")
+        port = free_port()
         
         # Start Core Container
         docker_cli.run_container(
             name=container_name,
             image=DEFAULT_CORE_IMAGE,
-            ports={"2222": "22"},
+            ports={str(port): "22"},
             env=host_env
         )
         
         assert wait_for_log(container_name, "supervisord started")
-        assert wait_for_port(2222)
+        assert wait_for_port(port)
 
     def test_core_user_mapping(self, clean_container, docker_cli, host_env):
         container_name = clean_container("sanity-test-core-user")
@@ -43,16 +44,17 @@ class TestCore:
         chrome_ver = docker_cli.exec(container_name, "google-chrome --version").stdout
         assert "Google Chrome" in chrome_ver or "Chromium" in chrome_ver
 
-    def test_core_ssh_connectivity(self, clean_container, docker_cli, host_env):
+    def test_core_ssh_connectivity(self, clean_container, docker_cli, host_env, free_port):
         # reuse or new? New for isolation
         container_name = clean_container("sanity-test-core-ssh")
+        port = free_port()
         docker_cli.run_container(
             name=container_name,
             image=DEFAULT_CORE_IMAGE,
-            ports={"2222": "22"},
+            ports={str(port): "22"},
             env=host_env
         )
-        assert wait_for_port(2222)
+        assert wait_for_port(port)
         
         # Verify SSH banner or logic (using netcat in a real scenario, but simple port check is okay for basic)
         # Or checking logs for sshd

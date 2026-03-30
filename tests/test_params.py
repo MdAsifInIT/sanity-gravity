@@ -2,9 +2,10 @@ from tests.utils import wait_for_port, wait_for_log
 from tests.conftest import DEFAULT_KASM_IMAGE, DEFAULT_VNC_IMAGE
 
 class TestParams:
-    def test_custom_password_kasm(self, clean_container, docker_cli, host_env):
+    def test_custom_password_kasm(self, clean_container, docker_cli, host_env, free_port):
         container_name = clean_container("sanity-test-kasm-pwd")
         custom_pw = "secret123"
+        port = free_port()
         
         env = host_env.copy()
         env["HOST_PASSWORD"] = custom_pw
@@ -12,7 +13,7 @@ class TestParams:
         docker_cli.run_container(
             name=container_name,
             image=DEFAULT_KASM_IMAGE,
-            ports={"9444": "8444"},
+            ports={str(port): "8444"},
             env=env
         )
         
