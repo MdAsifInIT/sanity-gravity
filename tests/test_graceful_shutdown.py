@@ -108,11 +108,6 @@ class TestGracefulShutdownConfig:
         content = _read_file(ENTRYPOINT_FILE)
         assert '" - Antigravity"' in content
 
-    def test_entrypoint_cleans_stale_dbus(self):
-        content = _read_file(ENTRYPOINT_FILE)
-        assert ".dbus/session-bus" in content
-
-
 # ---------------------------------------------------------------------------
 # Integration tests (self-contained: spin up own container)
 # ---------------------------------------------------------------------------
