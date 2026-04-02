@@ -31,6 +31,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     x11-utils \
     x11-xserver-utils \
     x11-apps \
+    xdotool \
     mesa-utils \
     fonts-noto-cjk \
     openssh-server \

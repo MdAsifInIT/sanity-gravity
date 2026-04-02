@@ -123,5 +123,37 @@ if [ ! -f /etc/ssh/ssh_host_ed25519_key ]; then
     ssh-keygen -A
 fi
 
-# Execute CMD (Supervisord)
-exec "$@"
+# Graceful shutdown handler: close Antigravity via Ctrl+Q before stopping supervisord.
+# Triggered by Docker stop/host shutdown (SIGTERM to PID 1).
+# Works with docker-compose stop_grace_period: 30s to allow full state persistence.
+graceful_shutdown() {
+    echo "[shutdown] Graceful shutdown initiated, closing Antigravity..."
+    FOUND=0
+    for wid in $(su - "$USER_NAME" -c 'DISPLAY=:1 xdotool search --class Antigravity' 2>/dev/null); do
+        NAME=$(su - "$USER_NAME" -c "DISPLAY=:1 xdotool getwindowname $wid" 2>/dev/null)
+        case "$NAME" in
+            *" - Antigravity"*|"Antigravity"|"Launchpad")
+                su - "$USER_NAME" -c "DISPLAY=:1 xdotool key --window $wid ctrl+q" 2>/dev/null
+                FOUND=1
+                ;;
+        esac
+    done
+
+    if [ "$FOUND" = 1 ]; then
+        for i in $(seq 1 20); do
+            pgrep -f antigravity-bin > /dev/null 2>&1 || break
+            sleep 1
+        done
+        echo "[shutdown] Antigravity exited after ${i}s"
+    fi
+
+    # Forward SIGTERM to supervisord
+    kill -TERM "$SUPERVISOR_PID" 2>/dev/null
+    wait "$SUPERVISOR_PID"
+}
+
+# Execute CMD (Supervisord) in background so we can trap signals
+"$@" &
+SUPERVISOR_PID=$!
+trap graceful_shutdown SIGTERM SIGINT
+wait "$SUPERVISOR_PID"

@@ -39,6 +39,7 @@ services:
       - ${WORKSPACE_DIR:-./workspace}:/home/${HOST_USER:-developer}/workspace
     shm_size: 512m
     restart: unless-stopped
+    stop_grace_period: 30s
     ulimits:
       nofile:
         soft: 65536
@@ -67,6 +68,7 @@ services:
       - ${WORKSPACE_DIR:-./workspace}:/home/${HOST_USER:-developer}/workspace
     shm_size: 512m
     restart: unless-stopped
+    stop_grace_period: 30s
     ulimits:
       nofile:
         soft: 65536
