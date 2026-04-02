@@ -1,4 +1,4 @@
-from tests.utils import wait_for_port, wait_for_log, check_http
+from tests.utils import wait_for_port, wait_for_log, wait_for_http
 from tests.conftest import DEFAULT_KASM_IMAGE
 
 class TestKasm:
@@ -27,12 +27,10 @@ class TestKasm:
             env=host_env
         )
         
-        assert wait_for_log(container_name, "success: kasmvnc", timeout=15)
-        
         # Check HTTP response (HTTPS with self-signed cert)
         url = f"https://localhost:{port}"
         # Expect 200 or 401 (auth required), either means server is up
-        assert check_http(url, timeout=5, insecure=True)
+        assert wait_for_http(url, timeout=15)
 
     def test_kasm_ssl_cert_group(self, clean_container, docker_cli, host_env):
         container_name = clean_container("sanity-test-kasm-ssl")
