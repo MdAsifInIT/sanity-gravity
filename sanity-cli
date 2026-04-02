@@ -311,6 +311,7 @@ def generate_git_compose(username):
                             print_success(f"SSH Proxy enabled and selected.")
                     except Exception as e:
                         print_error(f"Failed to setup proxy: {e}")
+                        sys.exit(1)
                 else:
                     print_warning("Skipping SSH Agent integration. Git inside container will require manual authentication.")
             else:
