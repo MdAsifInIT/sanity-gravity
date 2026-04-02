@@ -71,15 +71,20 @@ class TestSandboxFullIntegration:
         # Verify that the browser was actually launched by xdg-open and is running securely
         # Use a retry loop since browser startup can be slow on emulated/highly-loaded CI environments
         browser_found = False
-        for _ in range(10):
+        for i in range(20):
             time.sleep(2)
             # Check pgrep without su overhead to be more direct
             res_pgrep = docker_cli.exec(test_kasm_container, "pgrep -f chrome || pgrep -f chromium")
             if res_pgrep.returncode == 0:
                 browser_found = True
+                print(f"DEBUG: Browser detected after {i*2+2} seconds")
                 break
         
-        assert browser_found, "xdg-open returned 0, but no browser process (chrome/chromium) was detected after 20 seconds."
+        if not browser_found:
+            # Capture more info for debugging
+            ps_all = docker_cli.exec(test_kasm_container, "ps aux").stdout
+            xdg_log = docker_cli.exec(test_kasm_container, f"su - {user} -c 'tail -n 20 ~/.xsession-errors'").stdout
+            assert False, f"xdg-open returned 0, but no browser process (chrome/chromium) detected after 40s.\nProcess List:\n{ps_all}\nXsession Errors:\n{xdg_log}"
 
     def test_antigravity_chat_capability(self, test_kasm_container, docker_cli, host_env):
         """Verify that Antigravity can use chat functionality (Language Server stability)."""
