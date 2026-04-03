@@ -24,10 +24,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Run Trivy vulnerability scanner
+      - name: Security Scan - Core
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ghcr.io/${{ inputs.repo_lc }}-core:${{ inputs.tag }}-${{ inputs.arch }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Security Scan - Kasm
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ inputs.repo_lc }}-kasm:${{ inputs.tag }}-${{ inputs.arch }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Security Scan - VNC
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ inputs.repo_lc }}-vnc:${{ inputs.tag }}-${{ inputs.arch }}
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
