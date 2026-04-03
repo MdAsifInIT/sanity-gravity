@@ -1,0 +1,30 @@
+name: Reusable Test
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+
+jobs:
+  test:
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm64' || 'ubuntu-latest' }}
+    container:
+      image: ghcr.io/${{ github.repository }}-core:${{ inputs.tag }}-${{ inputs.arch }}
+      options: --user root # Ensure we can install deps for test environment
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Test Dependencies
+        run: |
+          apt-get update && apt-get install -y python3-pip socat
+          pip3 install --break-system-packages pytest requests urllib3 PyYAML pytest-timeout
+
+      - name: Run Integration Tests
+        run: ./sanity-cli test

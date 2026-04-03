@@ -1,33 +1,67 @@
-name: Sanity Gravity CI
+name: Sanity Gravity CI/CD
 
 on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, feat/*, fix/* ]
+  release:
+    types: [ published ]
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  # 1. Parallel Build Phase
+  build-x64:
+    uses: ./.github/workflows/build-arch.yml
+    with:
+      arch: amd64
+      tag: sha-${{ github.sha }}
+    secrets: inherit
 
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v6
+  build-arm64:
+    uses: ./.github/workflows/build-arch.yml
+    with:
+      arch: arm64
+      tag: sha-${{ github.sha }}
+    secrets: inherit
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+  # 2. Parallel Test & Security Check Phase (Starts after respective build completes)
+  test-x64:
+    needs: [build-x64]
+    uses: ./.github/workflows/test.yml
+    with:
+      arch: amd64
+      tag: sha-${{ github.sha }}
+    secrets: inherit
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y socat
-        python -m pip install --upgrade pip
-        pip install pytest requests urllib3 PyYAML pytest-timeout
+  check-x64:
+    needs: [build-x64]
+    uses: ./.github/workflows/check.yml
+    with:
+      arch: amd64
+      tag: sha-${{ github.sha }}
+    secrets: inherit
 
-    - name: Build Sandbox Images
-      run: ./sanity-cli build
+  test-arm64:
+    needs: [build-arm64]
+    uses: ./.github/workflows/test.yml
+    with:
+      arch: arm64
+      tag: sha-${{ github.sha }}
+    secrets: inherit
 
-    - name: Run Tests
-      run: ./sanity-cli test
+  check-arm64:
+    needs: [build-arm64]
+    uses: ./.github/workflows/check.yml
+    with:
+      arch: arm64
+      tag: sha-${{ github.sha }}
+    secrets: inherit
+
+  # 3. Final Multi-arch Publish Phase (Only if all tests and security checks pass)
+  publish:
+    if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: [test-x64, test-arm64, check-x64, check-arm64]
+    uses: ./.github/workflows/publish.yml
+    with:
+      tag: sha-${{ github.sha }}
+    secrets: inherit
