@@ -14,11 +14,16 @@ on:
         type: string
 
 jobs:
-  build:
+  # Use Native Runner to get the best performance
+  build-native:
+    name: Build Native (${{ inputs.arch }})
     runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm64' || 'ubuntu-latest' }}
+    timeout-minutes: 3 # If the job times out within 3 minutes, it will automatically trigger the fallback process
     permissions:
       contents: read
       packages: write
+    outputs:
+      status: ${{ job.status }}
 
     steps:
       - name: Checkout repository
@@ -42,12 +47,53 @@ jobs:
           TAG_VAL="${{ inputs.tag }}"
           ARCH_VAL="${{ inputs.arch }}"
           
-          # Tag local images to GHCR transient addresses
-          docker tag sanity-gravity:core ghcr.io/${REPO_LC}-core:${TAG_VAL}-${ARCH_VAL}
-          docker tag sanity-gravity:kasm ghcr.io/${REPO_LC}-kasm:${TAG_VAL}-${ARCH_VAL}
-          docker tag sanity-gravity:vnc ghcr.io/${REPO_LC}-vnc:${TAG_VAL}-${ARCH_VAL}
+          # Tag all variants (core/kasm/vnc)
+          for variant in core kasm vnc; do
+            docker tag sanity-gravity:${variant} ghcr.io/${REPO_LC}-${variant}:${TAG_VAL}-${ARCH_VAL}
+            docker push ghcr.io/${REPO_LC}-${variant}:${TAG_VAL}-${ARCH_VAL}
+          done
+
+  # If the native runner fails or times out, it will automatically fall back to the x64 runner and use QEMU emulator (Emulator Runner)
+  build-fallback:
+    name: Build Emulator (QEMU Fallback)
+    needs: build-native
+    if: always() && needs.build-native.result != 'success' && inputs.arch == 'arm64'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build via Sanity CLI (Emulated)
+        run: |
+          chmod +x ./sanity-cli
+          ./sanity-cli build
+
+      - name: Tag and Push (Transient Tag)
+        run: |
+          REPO_LC="${{ inputs.repo_lc }}"
+          TAG_VAL="${{ inputs.tag }}"
+          ARCH_VAL="${{ inputs.arch }}"
           
-          # Push to GHCR
-          docker push ghcr.io/${REPO_LC}-core:${TAG_VAL}-${ARCH_VAL}
-          docker push ghcr.io/${REPO_LC}-kasm:${TAG_VAL}-${ARCH_VAL}
-          docker push ghcr.io/${REPO_LC}-vnc:${TAG_VAL}-${ARCH_VAL}
+          for variant in core kasm vnc; do
+            docker tag sanity-gravity:${variant} ghcr.io/${REPO_LC}-${variant}:${TAG_VAL}-${ARCH_VAL}
+            docker push ghcr.io/${REPO_LC}-${variant}:${TAG_VAL}-${ARCH_VAL}
+          done
