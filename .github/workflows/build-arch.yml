@@ -34,13 +34,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push (Transient Tag)
-        uses: docker/build-push-action@v5
-        with:
-          context: sandbox/
-          file: sandbox/variants/core/Dockerfile
-          push: true
-          tags: ghcr.io/${{ inputs.repo_lc }}-core:${{ inputs.tag }}-${{ inputs.arch }}
-          platforms: linux/${{ inputs.arch }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Build via Sanity CLI
+        run: |
+          chmod +x ./sanity-cli
+          ./sanity-cli build
+
+      - name: Tag and Push (Transient Tag)
+        run: |
+          REPO_LC="${{ inputs.repo_lc }}"
+          TAG_VAL="${{ inputs.tag }}"
+          ARCH_VAL="${{ inputs.arch }}"
+          
+          # Tag local images to GHCR transient addresses
+          docker tag sanity-gravity:core ghcr.io/${REPO_LC}-core:${TAG_VAL}-${ARCH_VAL}
+          docker tag sanity-gravity:kasm ghcr.io/${REPO_LC}-kasm:${TAG_VAL}-${ARCH_VAL}
+          docker tag sanity-gravity:vnc ghcr.io/${REPO_LC}-vnc:${TAG_VAL}-${ARCH_VAL}
+          
+          # Push to GHCR
+          docker push ghcr.io/${REPO_LC}-core:${TAG_VAL}-${ARCH_VAL}
+          docker push ghcr.io/${REPO_LC}-kasm:${TAG_VAL}-${ARCH_VAL}
+          docker push ghcr.io/${REPO_LC}-vnc:${TAG_VAL}-${ARCH_VAL}

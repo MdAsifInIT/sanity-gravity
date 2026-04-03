@@ -19,18 +19,41 @@ jobs:
     permissions:
       contents: read
       packages: read
-    container:
-      image: ghcr.io/${{ inputs.repo_lc }}-core:${{ inputs.tag }}-${{ inputs.arch }}
-      options: --user root
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Transient Images
+        run: |
+          docker pull ghcr.io/${{ inputs.repo_lc }}-core:${{ inputs.tag }}-${{ inputs.arch }}
+          docker pull ghcr.io/${{ inputs.repo_lc }}-kasm:${{ inputs.tag }}-${{ inputs.arch }}
+          docker pull ghcr.io/${{ inputs.repo_lc }}-vnc:${{ inputs.tag }}-${{ inputs.arch }}
+          
+          # Tag them locally so tests can find them as 'sanity-gravity:core'
+          docker tag ghcr.io/${{ inputs.repo_lc }}-core:${{ inputs.tag }}-${{ inputs.arch }} sanity-gravity:core
+          docker tag ghcr.io/${{ inputs.repo_lc }}-kasm:${{ inputs.tag }}-${{ inputs.arch }} sanity-gravity:kasm
+          docker tag ghcr.io/${{ inputs.repo_lc }}-vnc:${{ inputs.tag }}-${{ inputs.arch }} sanity-gravity:vnc
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
       - name: Install Test Dependencies
         run: |
-          apt-get update && apt-get install -y python3-pip socat
-          pip3 install --break-system-packages pytest requests urllib3 PyYAML pytest-timeout
+          sudo apt-get update && sudo apt-get install -y socat
+          python -m pip install --upgrade pip
+          pip install pytest requests urllib3 PyYAML pytest-timeout
 
       - name: Run Integration Tests
-        run: ./sanity-cli test
+        run: |
+          chmod +x ./sanity-cli
+          ./sanity-cli test
