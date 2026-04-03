@@ -8,6 +8,10 @@ on:
   release:
     types: [ published ]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   # 1. Parallel Build Phase
   build-x64:
