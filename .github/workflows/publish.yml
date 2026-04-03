@@ -3,6 +3,9 @@ name: Reusable Publish
 on:
   workflow_call:
     inputs:
+      repo_lc:
+        required: true
+        type: string
       tag:
         required: true
         type: string
@@ -27,22 +30,25 @@ jobs:
 
       - name: Promote and Publish (All Architectures)
         run: |
+          REPO_LC="${{ inputs.repo_lc }}"
+          TAG_VAL="${{ inputs.tag }}"
+          
           # Pull x64 and arm64 transient images
-          docker pull ghcr.io/${{ github.repository }}-core:${{ inputs.tag }}-amd64
-          docker pull ghcr.io/${{ github.repository }}-core:${{ inputs.tag }}-arm64
+          docker pull ghcr.io/${REPO_LC}-core:${TAG_VAL}-amd64
+          docker pull ghcr.io/${REPO_LC}-core:${TAG_VAL}-arm64
           
           # Create and push multi-arch manifest
-          docker manifest create ghcr.io/${{ github.repository }}-core:latest \
-            ghcr.io/${{ github.repository }}-core:${{ inputs.tag }}-amd64 \
-            ghcr.io/${{ github.repository }}-core:${{ inputs.tag }}-arm64
+          docker manifest create ghcr.io/${REPO_LC}-core:latest \
+            ghcr.io/${REPO_LC}-core:${TAG_VAL}-amd64 \
+            ghcr.io/${REPO_LC}-core:${TAG_VAL}-arm64
           
-          docker manifest push ghcr.io/${{ github.repository }}-core:latest
+          docker manifest push ghcr.io/${REPO_LC}-core:latest
 
           # [Optional] Push specific release tag if applicable
           if [ "${{ github.event_name }}" == "release" ]; then
             TAG_NAME=${{ github.event.release.tag_name }}
-            docker manifest create ghcr.io/${{ github.repository }}-core:${TAG_NAME} \
-              ghcr.io/${{ github.repository }}-core:${{ inputs.tag }}-amd64 \
-              ghcr.io/${{ github.repository }}-core:${{ inputs.tag }}-arm64
-            docker manifest push ghcr.io/${{ github.repository }}-core:${TAG_NAME}
+            docker manifest create ghcr.io/${REPO_LC}-core:${TAG_NAME} \
+              ghcr.io/${REPO_LC}-core:${TAG_VAL}-amd64 \
+              ghcr.io/${REPO_LC}-core:${TAG_VAL}-arm64
+            docker manifest push ghcr.io/${REPO_LC}-core:${TAG_NAME}
           fi

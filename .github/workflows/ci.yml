@@ -13,59 +13,77 @@ permissions:
   packages: write
 
 jobs:
+  # 0. Global Setup
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      repo_lc: ${{ steps.lowercase.outputs.repo_lc }}
+    steps:
+      - id: lowercase
+        run: echo "repo_lc=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+
   # 1. Parallel Build Phase
   build-x64:
+    needs: [setup]
     uses: ./.github/workflows/build-arch.yml
     with:
       arch: amd64
+      repo_lc: ${{ needs.setup.outputs.repo_lc }}
       tag: sha-${{ github.sha }}
     secrets: inherit
 
   build-arm64:
+    needs: [setup]
     uses: ./.github/workflows/build-arch.yml
     with:
       arch: arm64
+      repo_lc: ${{ needs.setup.outputs.repo_lc }}
       tag: sha-${{ github.sha }}
     secrets: inherit
 
   # 2. Parallel Test & Security Check Phase (Starts after respective build completes)
   test-x64:
-    needs: [build-x64]
+    needs: [setup, build-x64]
     uses: ./.github/workflows/test.yml
     with:
       arch: amd64
+      repo_lc: ${{ needs.setup.outputs.repo_lc }}
       tag: sha-${{ github.sha }}
     secrets: inherit
 
   check-x64:
-    needs: [build-x64]
+    needs: [setup, build-x64]
     uses: ./.github/workflows/check.yml
     with:
       arch: amd64
+      repo_lc: ${{ needs.setup.outputs.repo_lc }}
       tag: sha-${{ github.sha }}
     secrets: inherit
 
   test-arm64:
-    needs: [build-arm64]
+    needs: [setup, build-arm64]
     uses: ./.github/workflows/test.yml
     with:
       arch: arm64
+      repo_lc: ${{ needs.setup.outputs.repo_lc }}
       tag: sha-${{ github.sha }}
     secrets: inherit
 
   check-arm64:
-    needs: [build-arm64]
+    needs: [setup, build-arm64]
     uses: ./.github/workflows/check.yml
     with:
       arch: arm64
+      repo_lc: ${{ needs.setup.outputs.repo_lc }}
       tag: sha-${{ github.sha }}
     secrets: inherit
 
   # 3. Final Multi-arch Publish Phase (Only if all tests and security checks pass)
   publish:
     if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    needs: [test-x64, test-arm64, check-x64, check-arm64]
+    needs: [setup, test-x64, test-arm64, check-x64, check-arm64]
     uses: ./.github/workflows/publish.yml
     with:
+      repo_lc: ${{ needs.setup.outputs.repo_lc }}
       tag: sha-${{ github.sha }}
     secrets: inherit

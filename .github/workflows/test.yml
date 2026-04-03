@@ -6,6 +6,9 @@ on:
       arch:
         required: true
         type: string
+      repo_lc:
+        required: true
+        type: string
       tag:
         required: true
         type: string
@@ -17,8 +20,8 @@ jobs:
       contents: read
       packages: read
     container:
-      image: ghcr.io/${{ github.repository }}-core:${{ inputs.tag }}-${{ inputs.arch }}
-      options: --user root # Ensure we can install deps for test environment
+      image: ghcr.io/${{ inputs.repo_lc }}-core:${{ inputs.tag }}-${{ inputs.arch }}
+      options: --user root
 
     steps:
       - name: Checkout repository
