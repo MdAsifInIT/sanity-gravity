@@ -17,14 +17,13 @@ jobs:
   # Use Native Runner to get the best performance
   build-native:
     name: Build Native (${{ inputs.arch }})
-    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm64' || 'ubuntu-latest' }}
-    timeout-minutes: 3 # If the job times out within 3 minutes, it will automatically trigger the fallback process
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 20 # Actual build timeout
     permissions:
       contents: read
       packages: write
-    outputs:
-      status: ${{ job.status }}
-
+    env:
+      DOCKER_DEFAULT_PLATFORM: linux/${{ inputs.arch }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -62,7 +61,9 @@ jobs:
     permissions:
       contents: read
       packages: write
-
+    env:
+      DOCKER_DEFAULT_PLATFORM: linux/${{ inputs.arch }} # CRITICAL: Force QEMU cross-build
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
