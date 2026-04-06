@@ -14,7 +14,6 @@ on:
         type: string
 
 jobs:
-  # Use Native Runner to get the best performance
   build-native:
     name: Build Native (${{ inputs.arch }})
     runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
@@ -47,53 +46,6 @@ jobs:
           ARCH_VAL="${{ inputs.arch }}"
           
           # Tag all variants (core/kasm/vnc)
-          for variant in core kasm vnc; do
-            docker tag sanity-gravity:${variant} ghcr.io/${REPO_LC}-${variant}:${TAG_VAL}-${ARCH_VAL}
-            docker push ghcr.io/${REPO_LC}-${variant}:${TAG_VAL}-${ARCH_VAL}
-          done
-
-  # If the native runner fails or times out, it will automatically fall back to the x64 runner and use QEMU emulator (Emulator Runner)
-  build-fallback:
-    name: Build Emulator (QEMU Fallback)
-    needs: build-native
-    if: always() && needs.build-native.result != 'success' && inputs.arch == 'arm64'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    env:
-      DOCKER_DEFAULT_PLATFORM: linux/${{ inputs.arch }} # CRITICAL: Force QEMU cross-build
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build via Sanity CLI (Emulated)
-        run: |
-          chmod +x ./sanity-cli
-          ./sanity-cli build
-
-      - name: Tag and Push (Transient Tag)
-        run: |
-          REPO_LC="${{ inputs.repo_lc }}"
-          TAG_VAL="${{ inputs.tag }}"
-          ARCH_VAL="${{ inputs.arch }}"
-          
           for variant in core kasm vnc; do
             docker tag sanity-gravity:${variant} ghcr.io/${REPO_LC}-${variant}:${TAG_VAL}-${ARCH_VAL}
             docker push ghcr.io/${REPO_LC}-${variant}:${TAG_VAL}-${ARCH_VAL}
