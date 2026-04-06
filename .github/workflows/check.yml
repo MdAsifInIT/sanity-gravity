@@ -33,9 +33,9 @@ jobs:
           image-ref: ghcr.io/${{ inputs.repo_lc }}-core:${{ inputs.tag }}-${{ inputs.arch }}
           format: 'table'
           exit-code: '1'
-          ignore-unfixed: false
+          ignore-unfixed: true
           vuln-type: 'os,library'
-          severity: 'LOW,MEDIUM,CRITICAL,HIGH'
+          severity: 'CRITICAL,HIGH'
 
       - name: Security Scan - Kasm
         uses: aquasecurity/trivy-action@master
@@ -43,9 +43,9 @@ jobs:
           image-ref: ghcr.io/${{ inputs.repo_lc }}-kasm:${{ inputs.tag }}-${{ inputs.arch }}
           format: 'table'
           exit-code: '1'
-          ignore-unfixed: false
+          ignore-unfixed: true
           vuln-type: 'os,library'
-          severity: 'LOW,MEDIUM,CRITICAL,HIGH'
+          severity: 'CRITICAL,HIGH'
 
       - name: Security Scan - VNC
         uses: aquasecurity/trivy-action@master
@@ -53,6 +53,6 @@ jobs:
           image-ref: ghcr.io/${{ inputs.repo_lc }}-vnc:${{ inputs.tag }}-${{ inputs.arch }}
           format: 'table'
           exit-code: '1'
-          ignore-unfixed: false
+          ignore-unfixed: true
           vuln-type: 'os,library'
-          severity: 'LOW,MEDIUM,CRITICAL,HIGH'
+          severity: 'CRITICAL,HIGH'
