@@ -80,7 +80,7 @@ jobs:
 
   # 3. Final Multi-arch Publish Phase (Only if all tests and security checks pass)
   publish:
-    if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    # if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs: [setup, test-x64, test-arm64, check-x64, check-arm64]
     uses: ./.github/workflows/publish.yml
     with:
