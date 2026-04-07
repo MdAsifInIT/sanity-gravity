@@ -17,10 +17,42 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     outputs:
+      short_sha: ${{ steps.vars.outputs.short_sha }}
+      tags: ${{ steps.vars.outputs.tags }}
       repo_lc: ${{ steps.lowercase.outputs.repo_lc }}
     steps:
+      - name: Checkout Code (Full History)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
       - id: lowercase
         run: echo "repo_lc=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+
+      - name: Generate Multi-Tag Metadata
+        id: vars
+        run: |
+          SHA_SHORT=$(git rev-parse --short HEAD)
+          echo "short_sha=${SHA_SHORT}" >> $GITHUB_OUTPUT
+          
+          # Use git describe to get the version number based on the tag
+          # Format: v1.0.0, v1.0.0-5-g7534f2a, or a1b2c3d (if no tags)
+          GIT_VERSION=$(git describe --tags --always)
+          
+          # Create a unique tag CSV list
+          # Separate multiple possible tags with commas
+          TAGS="latest,sha-${SHA_SHORT},${GIT_VERSION}"
+          
+          # If it's a release, add the release tag to the list
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            TAGS="${TAGS},${{ github.event.release.tag_name }}"
+          fi
+          
+          # Remove duplicate tags (e.g., GIT_VERSION is the same as RELEASE_TAG, or GIT_VERSION is the same as short sha when there are no tags)
+          # Use awk + comma to process into a unique list
+          UNIQUE_TAGS=$(echo "$TAGS" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+          
+          echo "tags=${UNIQUE_TAGS}" >> $GITHUB_OUTPUT
 
   # 1. Parallel Build Phase
   build-x64:
@@ -85,5 +117,6 @@ jobs:
     uses: ./.github/workflows/publish.yml
     with:
       repo_lc: ${{ needs.setup.outputs.repo_lc }}
-      tag: sha-${{ github.sha }}
+      transient_tag: sha-${{ github.sha }}
+      tags_csv: ${{ needs.setup.outputs.tags }}
     secrets: inherit
