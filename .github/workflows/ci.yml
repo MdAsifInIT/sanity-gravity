@@ -35,24 +35,17 @@ jobs:
           SHA_SHORT=$(git rev-parse --short HEAD)
           echo "short_sha=${SHA_SHORT}" >> $GITHUB_OUTPUT
           
-          # Use git describe to get the version number based on the tag
-          # Format: v1.0.0, v1.0.0-5-g7534f2a, or a1b2c3d (if no tags)
-          GIT_VERSION=$(git describe --tags --always)
+          # Initialize variables
+          TAG_LIST="sha-${SHA_SHORT}"
           
-          # Create a unique tag CSV list
-          # Separate multiple possible tags with commas
-          TAGS="latest,sha-${SHA_SHORT},${GIT_VERSION}"
-          
-          # If it's a release, add the release tag to the list
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            TAGS="${TAGS},${{ github.event.release.tag_name }}"
+          # Check if this is a Tag Push (e.g. v0.1.0) or a GitHub Release
+          if [[ "${{ github.ref_type }}" == "tag" && "${{ github.ref_name }}" == v* ]]; then
+            TAG_LIST="${TAG_LIST},latest,${{ github.ref_name }}"
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG_LIST="${TAG_LIST},latest,${{ github.event.release.tag_name }}"
           fi
           
-          # Remove duplicate tags (e.g., GIT_VERSION is the same as RELEASE_TAG, or GIT_VERSION is the same as short sha when there are no tags)
-          # Use awk + comma to process into a unique list
-          UNIQUE_TAGS=$(echo "$TAGS" | tr ',' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
-          
-          echo "tags=${UNIQUE_TAGS}" >> $GITHUB_OUTPUT
+          echo "tags=${TAG_LIST}" >> $GITHUB_OUTPUT
 
   # 1. Parallel Build Phase
   build-x64:
@@ -61,7 +54,7 @@ jobs:
     with:
       arch: amd64
       repo_lc: ${{ needs.setup.outputs.repo_lc }}
-      tag: sha-${{ github.sha }}
+      tag: sha-${{ needs.setup.outputs.short_sha }}
     secrets: inherit
 
   build-arm64:
@@ -70,17 +63,17 @@ jobs:
     with:
       arch: arm64
       repo_lc: ${{ needs.setup.outputs.repo_lc }}
-      tag: sha-${{ github.sha }}
+      tag: sha-${{ needs.setup.outputs.short_sha }}
     secrets: inherit
 
-  # 2. Parallel Test & Security Check Phase (Starts after respective build completes)
+  # 2. Parallel Test & Check Phase
   test-x64:
     needs: [setup, build-x64]
     uses: ./.github/workflows/test.yml
     with:
       arch: amd64
       repo_lc: ${{ needs.setup.outputs.repo_lc }}
-      tag: sha-${{ github.sha }}
+      tag: sha-${{ needs.setup.outputs.short_sha }}
     secrets: inherit
 
   check-x64:
@@ -89,7 +82,7 @@ jobs:
     with:
       arch: amd64
       repo_lc: ${{ needs.setup.outputs.repo_lc }}
-      tag: sha-${{ github.sha }}
+      tag: sha-${{ needs.setup.outputs.short_sha }}
     secrets: inherit
 
   test-arm64:
@@ -98,7 +91,7 @@ jobs:
     with:
       arch: arm64
       repo_lc: ${{ needs.setup.outputs.repo_lc }}
-      tag: sha-${{ github.sha }}
+      tag: sha-${{ needs.setup.outputs.short_sha }}
     secrets: inherit
 
   check-arm64:
@@ -107,16 +100,17 @@ jobs:
     with:
       arch: arm64
       repo_lc: ${{ needs.setup.outputs.repo_lc }}
-      tag: sha-${{ github.sha }}
+      tag: sha-${{ needs.setup.outputs.short_sha }}
     secrets: inherit
 
   # 3. Final Multi-arch Publish Phase (Only if all tests and security checks pass)
   publish:
-    # if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    # SOTA: Only publish Multi-arch manifest when a version tag (v*) is pushed or a release is created
+    if: github.event_name == 'release' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     needs: [setup, test-x64, test-arm64, check-x64, check-arm64]
     uses: ./.github/workflows/publish.yml
     with:
       repo_lc: ${{ needs.setup.outputs.repo_lc }}
-      transient_tag: sha-${{ github.sha }}
+      transient_tag: sha-${{ needs.setup.outputs.short_sha }}
       tags_csv: ${{ needs.setup.outputs.tags }}
     secrets: inherit
