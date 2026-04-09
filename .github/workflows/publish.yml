@@ -53,4 +53,13 @@ jobs:
               
               docker manifest push ghcr.io/${REPO_LC}-${variant}:${FINAL_TAG}
             done
+
+            # Tag per-arch images with persistent tags so they won't be garbage-collected
+            for FINAL_TAG in "${TAGS[@]}"; do
+              for arch in amd64 arm64; do
+                docker tag ghcr.io/${REPO_LC}-${variant}:${TRANSIENT_TAG}-${arch} \
+                  ghcr.io/${REPO_LC}-${variant}:${FINAL_TAG}-${arch}
+                docker push ghcr.io/${REPO_LC}-${variant}:${FINAL_TAG}-${arch}
+              done
+            done
           done
