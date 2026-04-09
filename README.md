@@ -40,15 +40,16 @@ Your secure desktop is ready, go to **https://localhost:8444**!
 - [Quick Start](#quick-start)
 - [Command Reference (`sanity-cli`)](#command-reference-sanity-cli)
 - [Advanced Features](#advanced-features)
-  - [IDE Management & Safe Upgrade](#ide-management--safe-upgrade-gravity-cli)
-  - [Multi-Instance Support](#multi-instance-support)
-  - [Container Snapshots](#container-snapshots-perfect-copy)
-  - [SSH Agent Proxy](#ssh-agent-proxy-advanced)
-  - [Runtime Config Sync](#runtime-config-sync)
+  - [IDE Management & Safe Upgrade](#-ide-management--safe-upgrade-gravity-cli)
+  - [SSH Agent Proxy](#-ssh-agent-proxy-advanced)
+  - [Multi-Instance Support](#-multi-instance-support)
+  - [Container Snapshots](#-container-snapshots-perfect-copy)
+  - [Runtime Config Sync](#-runtime-config-sync)
 - [Variants](#variants)
 - [SSH Access](#ssh-access)
 - [Project Structure](#project-structure)
 - [What's in a Name?](#whats-in-a-name)
+- [License](#license)
 
 ---
 
@@ -132,7 +133,7 @@ Your secure desktop is ready, go to **https://localhost:8444**!
 
 ## Advanced Features
 
-### 🛠️ IDE Management & Safe Upgrade (Gravity-CLI)
+### 🛠 IDE Management & Safe Upgrade (Gravity-CLI)
 
 Sanity-Gravity provides a robust OS-level defense mechanism against accidental IDE or Web Browser uninstallation / crashes caused by `apt upgrade`.
 
