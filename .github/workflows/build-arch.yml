@@ -1,0 +1,52 @@
+name: Reusable Build
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        required: true
+        type: string
+      repo_lc:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+
+jobs:
+  build-native:
+    name: Build Native (${{ inputs.arch }})
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 20 # Actual build timeout
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DOCKER_DEFAULT_PLATFORM: linux/${{ inputs.arch }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build via Sanity CLI
+        run: |
+          chmod +x ./sanity-cli
+          ./sanity-cli build
+
+      - name: Tag and Push (Transient Tag)
+        run: |
+          REPO_LC="${{ inputs.repo_lc }}"
+          TAG_VAL="${{ inputs.tag }}"
+          ARCH_VAL="${{ inputs.arch }}"
+          
+          # Tag all variants (core/kasm/vnc)
+          for variant in core kasm vnc; do
+            docker tag sanity-gravity:${variant} ghcr.io/${REPO_LC}-${variant}:${TAG_VAL}-${ARCH_VAL}
+            docker push ghcr.io/${REPO_LC}-${variant}:${TAG_VAL}-${ARCH_VAL}
+          done
