@@ -2,6 +2,7 @@
 import argparse
 import subprocess
 import os
+import re
 import sys
 import shutil
 import time
@@ -117,6 +118,29 @@ def run_command(cmd, cwd=None, capture=False, check=True):
             sys.exit(e.returncode)
         else:
             raise e
+
+# Username constraint for safe propagation into shell/sed/supervisord configs.
+# POSIX-ish: start with alpha/_, then alnum/_/-, up to 32 chars.
+_USERNAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_-]{0,31}$")
+# Project names map to docker compose project labels; restrict similarly.
+_PROJECT_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$")
+
+def validate_username(name):
+    """Raises ValueError if `name` is unsafe to interpolate into shell/sed contexts."""
+    if not name or not _USERNAME_RE.match(name):
+        raise ValueError(
+            f"Invalid username '{name}': must match {_USERNAME_RE.pattern} "
+            "(letters, digits, '_' and '-'; start with letter/underscore; max 32 chars)"
+        )
+    return name
+
+def validate_project_name(name):
+    """Raises ValueError if `name` is unsafe as a docker compose project name."""
+    if not name or not _PROJECT_NAME_RE.match(name):
+        raise ValueError(
+            f"Invalid project name '{name}': must match {_PROJECT_NAME_RE.pattern}"
+        )
+    return name
 
 def get_uid_gid_user():
     """Returns the current user's UID, GID, and Username."""
@@ -485,7 +509,21 @@ def up(args):
     if not args.skip_check:
         check_prereqs(args)
 
+    try:
+        validate_project_name(args.name)
+    except ValueError as e:
+        print_error(str(e))
+        sys.exit(1)
+
     uid, gid, username = get_uid_gid_user()
+    try:
+        validate_username(username)
+    except ValueError as e:
+        print_error(
+            f"{e}. The host username is propagated into the sandbox; "
+            "rename the host user or run as a user with a compliant name."
+        )
+        sys.exit(1)
 
     print_header(f"Starting {target}")
     print_info(f"Mapping User: {username} (UID={uid}, GID={gid})")

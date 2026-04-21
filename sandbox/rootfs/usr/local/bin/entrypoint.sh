@@ -6,6 +6,19 @@ HOST_UID=${HOST_UID}
 HOST_GID=${HOST_GID}
 USER_NAME=${HOST_USER}
 
+# Defence-in-depth: validate identity inputs before they reach sed/useradd/chown.
+# Mirrors validate_username / validate_project_name in sanity-cli; a malformed
+# USER_NAME would otherwise allow shell/sed injection via the supervisor-config
+# rewrites below.
+if ! [[ "$USER_NAME" =~ ^[a-zA-Z_][a-zA-Z0-9_-]{0,31}$ ]]; then
+    echo "ERROR: Invalid HOST_USER='$USER_NAME' (must be [a-zA-Z_][a-zA-Z0-9_-]{0,31})" >&2
+    exit 1
+fi
+if ! [[ "$HOST_UID" =~ ^[0-9]+$ ]] || ! [[ "$HOST_GID" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: HOST_UID/HOST_GID must be numeric (got UID='$HOST_UID' GID='$HOST_GID')" >&2
+    exit 1
+fi
+
 echo "Starting Antigravity Sandbox..."
 echo "Configuring user '$USER_NAME' with UID=$HOST_UID, GID=$HOST_GID..."
 
