@@ -185,7 +185,9 @@ project-c"""
 
     @patch("sanity_cli.run_command")
     def test_get_active_projects_error(self, mock_run):
-        mock_run.side_effect = Exception("Docker error")
+        # Docker invocation failures (the realistic case) should be swallowed
+        # into an empty list rather than crashing the CLI.
+        mock_run.side_effect = subprocess.CalledProcessError(1, "docker ps")
         projects = sanity_cli.get_active_projects()
         assert projects == []
 

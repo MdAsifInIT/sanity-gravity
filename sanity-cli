@@ -163,16 +163,16 @@ def check_prereqs(args):
     try:
         run_command("docker compose version", capture=True)
         print_success("Docker Compose is installed")
-    except:
-        print_error("Docker Compose is NOT installed or not accessible.")
+    except (subprocess.CalledProcessError, FileNotFoundError, SystemExit) as e:
+        print_error(f"Docker Compose is NOT installed or not accessible. ({e})")
         sys.exit(1)
-        
+
     # Check if docker daemon is running
     try:
         run_command("docker info", capture=True)
         print_success("Docker Daemon is running")
-    except:
-        print_error("Docker Daemon is NOT running. Please start Docker.")
+    except (subprocess.CalledProcessError, FileNotFoundError, SystemExit) as e:
+        print_error(f"Docker Daemon is NOT running. Please start Docker. ({e})")
         sys.exit(1)
 
 # ---------------------------------------------------------------------------
@@ -606,8 +606,8 @@ def up(args):
                     out = run_command(f"docker compose -p {project_name} {compose_files} port {service} {internal}", capture=True)
                     if ":" in out:
                         return out.split(":")[-1]
-                except:
-                    pass
+                except (subprocess.CalledProcessError, SystemExit) as e:
+                    print_warning(f"Could not resolve {service}:{internal} port ({e})")
                 return "?"
 
             ssh_port = get_port(service_name, "22")
@@ -915,7 +915,7 @@ def get_project_env(project_name):
             # If not (e.g. empty), keep looking? 
             if env_map:
                 return env_map
-        except:
+        except (subprocess.CalledProcessError, ValueError, SystemExit):
             continue
             
     return {}
@@ -1022,7 +1022,8 @@ def get_managed_projects():
         if not output:
             return []
         return sorted(list(set(output.splitlines())))
-    except:
+    except (subprocess.CalledProcessError, SystemExit) as e:
+        print_warning(f"Could not list managed projects: {e}")
         return []
 
 def get_legacy_projects():
@@ -1048,7 +1049,8 @@ def get_legacy_projects():
         
         # 3. Legacy = Candidates - Managed
         return sorted(list(candidates - managed))
-    except:
+    except (subprocess.CalledProcessError, SystemExit) as e:
+        print_warning(f"Could not list legacy projects: {e}")
         return []
 
 def get_active_projects():
@@ -1169,7 +1171,7 @@ def upgrade(args):
                         cid = run_command(cmd_find, capture=True, check=False)
                         if cid:
                              run_command(f"docker rm -f {cid}", check=False)
-                    except:
+                    except subprocess.CalledProcessError:
                         pass # Ignore errors here, compose execution is the real test
 
                     # Execute Recreate
@@ -1224,7 +1226,7 @@ def sync_config_cmd(args):
                     if out == "true":
                         target_variant = v
                         break
-                except:
+                except subprocess.CalledProcessError:
                     pass
             
             if target_variant:
@@ -1269,7 +1271,7 @@ def shell_cmd(args):
                  target_variant = v
                  container_name = cname
                  break
-        except:
+        except subprocess.CalledProcessError:
              pass
     
     if not container_name:
@@ -1327,7 +1329,7 @@ def open_cmd(args):
                  target_variant = v
                  container_name = cname
                  break
-        except:
+        except subprocess.CalledProcessError:
              pass
              
     if not container_name:
@@ -1354,8 +1356,8 @@ def open_cmd(args):
             out = run_command(f"docker compose -p {project_name} {compose_file_arg} port {service} {internal}", capture=True, check=False)
             if ":" in out:
                 return out.split(":")[-1]
-        except:
-            pass
+        except subprocess.CalledProcessError as e:
+            print_warning(f"Could not resolve {service}:{internal} port ({e})")
         return None
 
     # Determine connector from the tag
@@ -1508,8 +1510,8 @@ def status(args):
             # Also try to show ports nicely if possible
             # This is a bit hacky without full introspection, but 'ps' usually shows ports.
             print("")
-        except:
-            print_error(f"Failed to get status for {project}")
+        except (subprocess.CalledProcessError, SystemExit) as e:
+            print_error(f"Failed to get status for {project}: {e}")
 
     # Check for legacy (unmanaged) projects to warn user
     # Only check if we are showing all projects (default view) or specifically asked
@@ -1673,7 +1675,7 @@ def ide_cmd(args):
                  target_variant = v
                  container_name = cname
                  break
-        except:
+        except subprocess.CalledProcessError:
              pass
 
     if not container_name:
@@ -1864,7 +1866,22 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    args.func(args)
+    try:
+        args.func(args)
+    except KeyboardInterrupt:
+        print()
+        print_warning("Interrupted by user.")
+        sys.exit(130)
+    except SystemExit:
+        raise
+    except Exception as e:
+        print_error(f"Unexpected error: {type(e).__name__}: {e}")
+        if os.environ.get("SANITY_DEBUG"):
+            import traceback
+            traceback.print_exc()
+        else:
+            print_info("Re-run with SANITY_DEBUG=1 for a full traceback.")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
