@@ -2,7 +2,6 @@
 set -e
 
 # Ensure environment variables
-# Ensure environment variables
 export USER=${USER}
 export HOME=${HOME}
 
