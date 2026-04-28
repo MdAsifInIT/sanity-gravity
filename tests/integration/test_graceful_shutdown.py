@@ -125,7 +125,7 @@ class TestGracefulShutdownConfig:
         # or check the xfce desktop layer
         xfce_layer = os.path.join(
             os.path.dirname(__file__),
-            "..", "plugins", "desktops", "xfce", "Dockerfile",
+            "..", "..", "plugins", "desktops", "xfce", "Dockerfile",
         )
         layer_content = _read_file(xfce_layer)
         assert "xdotool" in layer_content

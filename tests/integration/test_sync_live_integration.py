@@ -1,27 +1,16 @@
 
-import pytest
-import subprocess
 import os
-import shutil
-import tempfile
-import time
+import subprocess
 import sys
-from importlib.machinery import SourceFileLoader
-import importlib.util
+import tempfile
+from pathlib import Path
 
-# Load sanity-cli
-def load_sanity_cli():
-    if "sanity_cli" in sys.modules:
-        return sys.modules["sanity_cli"]
-        
-    file_path = os.path.abspath("sanity-cli")
-    loader = SourceFileLoader("sanity_cli", file_path)
-    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("sanity_cli", loader))
-    sys.modules["sanity_cli"] = module
-    loader.exec_module(module)
-    return module
+import pytest
 
-sanity_cli = load_sanity_cli()
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(_REPO_ROOT))
+
+from sanity_gravity.verbs.sync import sync_config  # noqa: E402
 
 TEST_CONTAINER_NAME = "sanity-test-sync-live"
 TEST_USER = "testuser"
@@ -71,7 +60,7 @@ def test_sync_config_live_execution(setup_test_container):
         # 2. Execute sync_config
         print("\nExecuting sync_config...")
         # Note: We pass project_name="test-proj" but it's unused by the core logic except for logging
-        sanity_cli.sync_config("test-proj", TEST_CONTAINER_NAME, TEST_USER, config_source=temp_config_dir)
+        sync_config("test-proj", TEST_CONTAINER_NAME, TEST_USER, config_source=temp_config_dir)
         
         # 3. Verify Files Existence
         target_dir = f"/home/{TEST_USER}/.gemini"

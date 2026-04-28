@@ -1,93 +1,80 @@
-import pytest
-import sys
+"""Unit-style tests for the ``ide`` verb (no real Docker calls).
+
+The patches target ``sanity_gravity.verbs.ide.{run_command,get_active_projects}``
+because that is where those names are looked up by ``ide_cmd``.
+"""
+from __future__ import annotations
+
+import argparse
 import os
 import subprocess
-import argparse
-from unittest.mock import patch, MagicMock
+import sys
+from pathlib import Path
+from unittest.mock import patch
 
-import importlib.util
-from importlib.machinery import SourceFileLoader
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(_REPO_ROOT))
 
-def load_sanity_cli():
-    if "sanity_cli" in sys.modules:
-        return sys.modules["sanity_cli"]
-        
-    file_path = os.path.abspath("sanity-cli")
-    loader = SourceFileLoader("sanity_cli", file_path)
-    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("sanity_cli", loader))
-    sys.modules["sanity_cli"] = module
-    loader.exec_module(module)
-    return module
+from sanity_gravity.verbs import ide as ide_verb  # noqa: E402
 
-sanity_cli = load_sanity_cli()
+
+_REPO = str(_REPO_ROOT)
+
+
+def _expected_calls(cname: str, subcommand: str):
+    cli_src = os.path.join(
+        _REPO, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli"
+    )
+    cleanup_src = os.path.join(
+        _REPO, "sandbox", "rootfs", "usr", "local", "bin", "chrome-cleanup.sh"
+    )
+    devnull = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    return [
+        ((("docker", "cp", cli_src, f"{cname}:/usr/local/bin/gravity-cli"),), devnull),
+        ((("docker", "cp", cleanup_src, f"{cname}:/usr/local/bin/chrome-cleanup.sh"),), devnull),
+        ((("docker", "exec", "-u", "root", cname,
+           "chmod", "+x", "/usr/local/bin/gravity-cli", "/usr/local/bin/chrome-cleanup.sh"),), devnull),
+        ((("docker", "exec", "-it", "-u", "root", cname,
+           "/usr/local/bin/gravity-cli", subcommand),), {}),
+    ]
+
 
 class TestIdeCommand:
-    @patch("sanity_cli.run_command")
+    @patch("sanity_gravity.verbs.ide.run_command")
     @patch("subprocess.check_call")
-    @patch("sanity_cli.get_active_projects")
+    @patch("sanity_gravity.verbs.ide.get_active_projects")
     def test_ide_update_success(self, mock_get_active, mock_check_call, mock_run):
         mock_get_active.return_value = ["sanity-gravity"]
         mock_run.return_value = "true"  # container running
-        
-        args = argparse.Namespace(name="sanity-gravity", ide_command="update-ide")
-        
-        sanity_cli.ide_cmd(args)
-        
-        cname = "sanity-gravity-ag-xfce-kasm-1"
-        base_dir = os.path.dirname(os.path.abspath(sanity_cli.__file__))
-        cli_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli")
-        cleanup_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "chrome-cleanup.sh")
 
-        expected_calls = [
-            ((("docker", "cp", cli_src, f"{cname}:/usr/local/bin/gravity-cli"),),
-             {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
-            ((("docker", "cp", cleanup_src, f"{cname}:/usr/local/bin/chrome-cleanup.sh"),),
-             {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
-            ((("docker", "exec", "-u", "root", cname,
-               "chmod", "+x", "/usr/local/bin/gravity-cli", "/usr/local/bin/chrome-cleanup.sh"),),
-             {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
-            ((("docker", "exec", "-it", "-u", "root", cname,
-               "/usr/local/bin/gravity-cli", "update-ide"),), {})
-        ]
-        assert mock_check_call.call_args_list == expected_calls
-        
-    @patch("sanity_cli.run_command")
+        args = argparse.Namespace(name="sanity-gravity", ide_command="update-ide")
+        ide_verb.ide_cmd(args)
+
+        cname = "sanity-gravity-ag-xfce-kasm-1"
+        assert mock_check_call.call_args_list == _expected_calls(cname, "update-ide")
+
+    @patch("sanity_gravity.verbs.ide.run_command")
     @patch("subprocess.check_call")
-    @patch("sanity_cli.get_active_projects")
+    @patch("sanity_gravity.verbs.ide.get_active_projects")
     def test_ide_reinstall_success(self, mock_get_active, mock_check_call, mock_run):
         mock_get_active.return_value = ["my-project"]
-        mock_run.return_value = "true"  # container running
-        
+        mock_run.return_value = "true"
+
         args = argparse.Namespace(name="my-project", ide_command="reinstall-ide")
-        
-        sanity_cli.ide_cmd(args)
-        
+        ide_verb.ide_cmd(args)
+
         cname = "my-project-ag-xfce-kasm-1"
-        base_dir = os.path.dirname(os.path.abspath(sanity_cli.__file__))
-        cli_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli")
-        cleanup_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "chrome-cleanup.sh")
+        assert mock_check_call.call_args_list == _expected_calls(cname, "reinstall-ide")
 
-        expected_calls = [
-            ((("docker", "cp", cli_src, f"{cname}:/usr/local/bin/gravity-cli"),),
-             {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
-            ((("docker", "cp", cleanup_src, f"{cname}:/usr/local/bin/chrome-cleanup.sh"),),
-             {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
-            ((("docker", "exec", "-u", "root", cname,
-               "chmod", "+x", "/usr/local/bin/gravity-cli", "/usr/local/bin/chrome-cleanup.sh"),),
-             {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}),
-            ((("docker", "exec", "-it", "-u", "root", cname,
-               "/usr/local/bin/gravity-cli", "reinstall-ide"),), {})
-        ]
-        assert mock_check_call.call_args_list == expected_calls
-
-    @patch("sanity_cli.get_active_projects")
+    @patch("sanity_gravity.verbs.ide.get_active_projects")
     @patch("builtins.print")
     def test_ide_container_not_found(self, mock_print, mock_get_active):
         mock_get_active.return_value = ["other-project"]
-        
-        args = argparse.Namespace(name="non-existent-project", ide_command="update-ide")
-        
-        sanity_cli.ide_cmd(args)
-        
+
+        args = argparse.Namespace(
+            name="non-existent-project", ide_command="update-ide"
+        )
+        ide_verb.ide_cmd(args)
+
         printed = [call_args[0][0] for call_args in mock_print.call_args_list]
         assert any("is not active or managed" in text for text in printed)
