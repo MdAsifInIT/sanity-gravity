@@ -296,6 +296,40 @@ def test_announce_emits_access_for_active_connector():
     assert any("ssh -p" in v for v in fields.values())
 
 
+def test_announce_in_dry_run_summarises_without_success_or_access():
+    """Dry-run must not claim the container is running or print AccessInfo.
+
+    The ``up`` flow short-circuits Docker side effects in dry-run mode
+    (resolve_ephemeral / sync_config skip themselves and the executor
+    refuses to run actions). The announce hook must follow suit: emit a
+    single planned-outcome line rather than the misleading legacy
+    ``is running`` + Access block.
+    """
+    bus = EventBus()
+    register_builtin_up_hooks(bus)
+
+    deps, _ = _make_deps()
+    ctx = _make_ctx(deps, project="other")  # forces ephemeral on kasm/ssh
+    ctx.dry_run = True
+    UpOrchestrator(bus, ctx.reporter).run(ctx)
+
+    kinds = [c[0] for c in ctx.reporter.calls]
+    assert "success" not in kinds
+    assert "access" not in kinds
+
+    info_messages = [
+        c[1][0] for c in ctx.reporter.calls if c[0] == "info" and c[1]
+    ]
+    would = [m for m in info_messages if "would announce" in m]
+    assert len(would) == 1, info_messages
+    msg = would[0]
+    assert "ag-xfce-kasm" in msg
+    assert "kasm" in msg
+    # Ports flipped to "0" by auto_port_alloc must surface as <ephemeral>.
+    assert "<ephemeral>" in msg
+    assert "=0" not in msg
+
+
 def test_validate_inputs_propagates_value_error():
     bus = EventBus()
     register_builtin_up_hooks(bus)

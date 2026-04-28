@@ -172,9 +172,23 @@ def announce(ctx) -> None:
 
     Field labels include the colon + padding so AnsiSink renders byte-
     identically to the legacy inline prints.
+
+    In dry-run mode, no container exists and ephemeral ports were not
+    resolved, so emit a single planned-outcome summary instead of the
+    misleading success + access block.
     """
     rp = ctx.resolved_ports
     user = ctx.host_user
+    if getattr(ctx, "dry_run", False):
+        ports_summary = ", ".join(
+            f"{name}={value if value != '0' else '<ephemeral>'}"
+            for name, value in rp.items()
+        )
+        ctx.reporter.info(
+            f"» would announce: {ctx.tag} ({ctx.tag.connector}) — "
+            f"ports: {ports_summary}"
+        )
+        return
     ctx.reporter.success(f"{ctx.tag} is running.")
     if ctx.tag.connector == "kasm":
         ctx.reporter.access("kasm", {
