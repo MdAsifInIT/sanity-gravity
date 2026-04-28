@@ -8,6 +8,7 @@ kernel can be unit-tested with stubs in place of Docker / FS calls.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from actions import RunSubprocess  # type: ignore[import-not-found]
 from command import CommandBuilder  # type: ignore[import-not-found]
 from eventbus import EventBus  # type: ignore[import-not-found]
 from phase import Phase  # type: ignore[import-not-found]
+from plugins import default_registry  # type: ignore[import-not-found]
 
 
 def validate_inputs(ctx) -> None:
@@ -167,11 +169,77 @@ def sync_config_hook(ctx) -> None:
     ctx.deps.sync_config(ctx.project, ctx.container_name, ctx.host_user)
 
 
-def announce(ctx) -> None:
-    """UP_ANNOUNCE: emit AccessInfo + final success line.
+_ANNOUNCE_LINE_RE = re.compile(r"^([^:]+:\s+)(.+)$")
 
-    Field labels include the colon + padding so AnsiSink renders byte-
-    identically to the legacy inline prints.
+
+class _PortsView:
+    """Read-only ``{label: value}`` mapping for ``str.format`` templates.
+
+    Wrapping the dict lets the manifest template reference ``{ports.http}``
+    via attribute access while still raising on unknown labels (rather
+    than silently emitting an empty string).
+    """
+
+    def __init__(self, mapping: dict[str, str]) -> None:
+        self._m = mapping
+
+    def __getattr__(self, name: str) -> str:
+        try:
+            return self._m[name]
+        except KeyError as exc:
+            raise KeyError(f"Unknown port label '{name}' in announce template") from exc
+
+
+def _ports_for_announce(ctx, connector_manifest) -> dict[str, str]:
+    """Map manifest port labels onto the runtime-resolved port dict.
+
+    The runtime ``resolved_ports`` dict is keyed by legacy slug
+    (``ssh`` / ``kasm`` / ``vnc`` / ``novnc``); the manifest port labels
+    are connector-author-defined (``ssh`` / ``http`` / ``vnc`` / ``novnc``).
+    We bridge by matching ``PortSpec.internal`` against a legacy table.
+    """
+    rp = ctx.resolved_ports
+    legacy_by_internal = {22: "ssh", 8444: "kasm", 5901: "vnc", 6901: "novnc"}
+    out: dict[str, str] = {}
+    for port in connector_manifest.ports:
+        legacy = legacy_by_internal.get(port.internal)
+        if legacy is not None and legacy in rp:
+            out[port.label] = rp[legacy]
+    return out
+
+
+def _render_announce(template: str, **keys) -> dict[str, str]:
+    """Render the manifest's announce template into a fields dict.
+
+    The template is a ``str.format``-friendly multi-line block. Each
+    non-empty line is split into ``(key, value)`` on the first run of
+    ``: <spaces>`` so the AnsiSink keeps producing byte-identical
+    ``  KEY:      VALUE`` lines. The rendered ordering preserves the
+    template's line ordering.
+    """
+    rendered = template.format(**keys)
+    fields: dict[str, str] = {}
+    for line in rendered.splitlines():
+        if not line.strip():
+            continue
+        m = _ANNOUNCE_LINE_RE.match(line)
+        if m is None:
+            # Lines without a colon-padded label become value-only entries
+            # under an empty key — rare path; mostly defensive.
+            fields[""] = line
+        else:
+            fields[m.group(1)] = m.group(2)
+    return fields
+
+
+def announce(ctx) -> None:
+    """UP_ANNOUNCE: render the connector manifest's announce template
+    and emit AccessInfo + final success line.
+
+    The announce text is no longer hardcoded per-connector: each plugin's
+    ``manifest.toml`` carries an ``[announce] template = "..."`` block
+    interpolated via plain ``str.format`` (no Jinja, no eval). The
+    AnsiSink renders the resulting fields byte-identically to PR #5.
 
     In dry-run mode, no container exists and ephemeral ports were not
     resolved, so emit a single planned-outcome summary instead of the
@@ -179,39 +247,35 @@ def announce(ctx) -> None:
     """
     rp = ctx.resolved_ports
     user = ctx.host_user
+    connector_slug = ctx.tag.connector
+
     if getattr(ctx, "dry_run", False):
         ports_summary = ", ".join(
             f"{name}={value if value != '0' else '<ephemeral>'}"
             for name, value in rp.items()
         )
         ctx.reporter.info(
-            f"» would announce: {ctx.tag} ({ctx.tag.connector}) — "
+            f"» would announce: {ctx.tag} ({connector_slug}) — "
             f"ports: {ports_summary}"
         )
         return
+
     ctx.reporter.success(f"{ctx.tag} is running.")
-    if ctx.tag.connector == "kasm":
-        ctx.reporter.access("kasm", {
-            "URL:      ": f"https://localhost:{rp['kasm']}",
-            "SSH:      ": f"ssh -p {rp['ssh']} {user}@localhost",
-            "User:     ": user,
-            "Pass:     ": ctx.password,
-        })
-    elif ctx.tag.connector == "vnc":
-        ctx.reporter.access("vnc", {
-            "VNC Client: ": f"localhost:{rp['vnc']}",
-            "noVNC Web:  ": f"http://localhost:{rp['novnc']}/vnc.html",
-            "SSH:        ": f"ssh -p {rp['ssh']} {user}@localhost",
-            "Password:   ": ctx.password,
-        })
-    elif ctx.tag.connector == "ssh":
-        ctx.reporter.access("ssh", {
-            "SSH:        ": f"ssh -p {rp['ssh']} {user}@localhost",
-            "Pass:       ": ctx.password,
-            "Shell:      ": (
-                f"docker exec -it -u {user} {ctx.container_name} /bin/bash"
-            ),
-        })
+
+    manifest = default_registry().get("connector", connector_slug)
+    if manifest.announce is None:
+        return
+
+    fields = _render_announce(
+        manifest.announce.template,
+        ports=_PortsView(_ports_for_announce(ctx, manifest)),
+        user=user,
+        password=ctx.password,
+        tag=str(ctx.tag),
+        connector=connector_slug,
+        container_name=ctx.container_name,
+    )
+    ctx.reporter.access(connector_slug, fields)
 
 
 def register_builtin_up_hooks(bus: EventBus) -> None:

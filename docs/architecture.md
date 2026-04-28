@@ -6,18 +6,24 @@ Every Sanity-Gravity image is assembled through a **4-layer FROM chain**. Each l
 
 ```
 ubuntu:24.04 (pinned SHA)
- └─ Dockerfile.base                     → sanity-gravity:_base
-     ├─ layers/desktops/xfce/           → sanity-gravity:_base-xfce
-     │   ├─ layers/agents/ag/           → sanity-gravity:_ag-xfce
-     │   │   ├─ layers/connectors/kasm/ → sanity-gravity:ag-xfce-kasm
-     │   │   ├─ layers/connectors/vnc/  → sanity-gravity:ag-xfce-vnc
-     │   │   └─ layers/connectors/ssh/  → sanity-gravity:ag-xfce-ssh
-     │   ├─ layers/agents/gc/           → sanity-gravity:_gc-xfce  → gc-xfce-{kasm,vnc,ssh}
-     │   └─ layers/agents/cc/           → sanity-gravity:_cc-xfce  → cc-xfce-{kasm,vnc,ssh}
-     └─ layers/desktops/none/           → sanity-gravity:_base-none
-         ├─ layers/agents/gc/           → sanity-gravity:_gc-none   → gc-none-ssh
-         └─ layers/agents/cc/           → sanity-gravity:_cc-none   → cc-none-ssh
+ └─ Dockerfile.base                      → sanity-gravity:_base
+     ├─ plugins/desktops/xfce/           → sanity-gravity:_base-xfce
+     │   ├─ plugins/agents/ag/           → sanity-gravity:_ag-xfce
+     │   │   ├─ plugins/connectors/kasm/ → sanity-gravity:ag-xfce-kasm
+     │   │   ├─ plugins/connectors/vnc/  → sanity-gravity:ag-xfce-vnc
+     │   │   └─ plugins/connectors/ssh/  → sanity-gravity:ag-xfce-ssh
+     │   ├─ plugins/agents/gc/           → sanity-gravity:_gc-xfce  → gc-xfce-{kasm,vnc,ssh}
+     │   └─ plugins/agents/cc/           → sanity-gravity:_cc-xfce  → cc-xfce-{kasm,vnc,ssh}
+     └─ plugins/desktops/none/           → sanity-gravity:_base-none
+         ├─ plugins/agents/gc/           → sanity-gravity:_gc-none   → gc-none-ssh
+         └─ plugins/agents/cc/           → sanity-gravity:_cc-none   → cc-none-ssh
 ```
+
+Each non-base layer lives under `plugins/<kind>/<slug>/` alongside a
+`manifest.toml` declaring its capabilities, ports, compose overlay, and
+(for connectors) announce template. The kernel reads manifests at startup
+via `lib/plugins.PluginRegistry`; adding a new agent/desktop/connector is
+**a directory + two files** — no Python edits required (see PR #6).
 
 ## Naming Convention
 
@@ -40,9 +46,14 @@ The CLI chains them via `--build-arg`:
 
 ```bash
 docker build --build-arg BASE_IMAGE=sanity-gravity:_ag-xfce \
-  -f sandbox/layers/connectors/kasm/Dockerfile \
-  -t sanity-gravity:ag-xfce-kasm sandbox
+  -f plugins/connectors/kasm/Dockerfile \
+  -t sanity-gravity:ag-xfce-kasm plugins/connectors/kasm
 ```
+
+The base layer keeps `sandbox/` as its build context (so it can `COPY
+rootfs /`); plugin layers each use **their own directory** as the
+context, keeping the build hash deterministic and limiting each layer's
+visibility to its own files.
 
 ## Cache Behavior
 
@@ -72,19 +83,7 @@ The base image (`Dockerfile.base`) installs `supervisord` as the process manager
 
 ```
 sandbox/
-├── Dockerfile.base             # Layer 1: base
-├── layers/
-│   ├── desktops/
-│   │   ├── xfce/Dockerfile     # Layer 2: XFCE4 desktop
-│   │   └── none/Dockerfile     # Layer 2: headless (no-op)
-│   ├── agents/
-│   │   ├── ag/Dockerfile       # Layer 3: Antigravity IDE + Chrome
-│   │   ├── gc/Dockerfile       # Layer 3: Node.js + Gemini CLI
-│   │   └── cc/Dockerfile       # Layer 3: Claude Code CLI
-│   └── connectors/
-│       ├── kasm/               # Layer 4: KasmVNC + supervisor config
-│       ├── vnc/                # Layer 4: TigerVNC + noVNC + supervisor config
-│       └── ssh/                # Layer 4: SSH-only (EXPOSE 22)
+├── Dockerfile.base             # Layer 1: base (build context = sandbox/)
 └── rootfs/                     # Overlay copied into base image
     ├── usr/local/bin/
     │   ├── entrypoint.sh       # PID 1 init script
@@ -92,4 +91,48 @@ sandbox/
     └── etc/supervisor/
         ├── supervisord.conf    # Master config
         └── conf.d/ssh.conf     # sshd program definition
+
+plugins/                        # Manifest-driven extension point (PR #6)
+├── desktops/
+│   ├── xfce/                   # Layer 2: XFCE4 desktop
+│   │   ├── manifest.toml       #   provides=[display]
+│   │   └── Dockerfile
+│   └── none/                   # Layer 2: headless (no-op)
+│       ├── manifest.toml
+│       └── Dockerfile
+├── agents/
+│   ├── ag/                     # Layer 3: Antigravity IDE + Chrome
+│   │   ├── manifest.toml       #   requires=[display]
+│   │   └── Dockerfile
+│   ├── gc/                     # Layer 3: Node.js + Gemini CLI
+│   │   ├── manifest.toml
+│   │   └── Dockerfile
+│   └── cc/                     # Layer 3: Claude Code CLI
+│       ├── manifest.toml
+│       └── Dockerfile
+└── connectors/
+    ├── kasm/                   # Layer 4: KasmVNC + supervisor config
+    │   ├── manifest.toml       #   ports/compose/announce
+    │   ├── Dockerfile
+    │   ├── supervisord.conf
+    │   └── startup.sh
+    ├── vnc/                    # Layer 4: TigerVNC + noVNC + supervisor config
+    │   ├── manifest.toml
+    │   ├── Dockerfile
+    │   ├── supervisord.conf
+    │   └── startup.sh
+    └── ssh/                    # Layer 4: SSH-only (EXPOSE 22)
+        ├── manifest.toml
+        └── Dockerfile
 ```
+
+### Adding a new plugin
+
+```bash
+mkdir -p plugins/connectors/rdp
+$EDITOR plugins/connectors/rdp/{manifest.toml,Dockerfile}
+./sanity-cli plugins list   # verify it registered
+./sanity-cli list           # see new tag combinations appear
+```
+
+No core code edits — the kernel re-discovers the plugin tree on each run.

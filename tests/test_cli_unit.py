@@ -141,10 +141,10 @@ class TestLayeredBuildSystem:
                 assert os.path.exists(dockerfile), f"Missing: {dockerfile} (for {tag})"
 
     def test_layer_dockerfiles_have_from(self):
-        """All non-base layer Dockerfiles must have ARG BASE_IMAGE and FROM."""
+        """All non-base plugin Dockerfiles must have ARG BASE_IMAGE and FROM."""
         import glob
-        layer_dir = os.path.join(os.path.dirname(__file__), "..", "sandbox", "layers")
-        for df in glob.glob(os.path.join(layer_dir, "**", "Dockerfile"), recursive=True):
+        plugin_dir = os.path.join(os.path.dirname(__file__), "..", "plugins")
+        for df in glob.glob(os.path.join(plugin_dir, "**", "Dockerfile"), recursive=True):
             content = open(df).read()
             assert "ARG BASE_IMAGE" in content, f"Missing ARG BASE_IMAGE in {df}"
             assert "FROM ${BASE_IMAGE}" in content, f"Missing FROM in {df}"
@@ -152,7 +152,7 @@ class TestLayeredBuildSystem:
     def test_rd_connector_removed(self):
         """rd connector should not exist."""
         assert "rd" not in sanity_cli.CONNECTORS
-        rd_dir = os.path.join(os.path.dirname(__file__), "..", "sandbox", "layers", "connectors", "rd")
+        rd_dir = os.path.join(os.path.dirname(__file__), "..", "plugins", "connectors", "rd")
         assert not os.path.exists(rd_dir)
 
 
@@ -401,11 +401,13 @@ class TestNewCommands:
         with patch("sanity_cli.get_active_projects", return_value=["sanity-gravity"]):
             sanity_cli.shell_cmd(args)
 
-            # Check if docker exec was called
-            # It finds the first running container from VALID_TAGS (ag-xfce-ssh)
-            # developer is default user, zsh is default shell
+            # Check if docker exec was called.
+            # It finds the first running container from VALID_TAGS;
+            # PR #6's manifest registry walks plugin dirs in stable
+            # alphabetical order, so the first ag-* tag is ag-xfce-kasm.
+            # developer is default user, zsh is default shell.
             expected_cmd = ("docker", "exec", "-it", "-u", "developer",
-                            "sanity-gravity-ag-xfce-ssh-1", "zsh")
+                            "sanity-gravity-ag-xfce-kasm-1", "zsh")
             mock_check_call.assert_called_with(expected_cmd)
 
     @patch("sanity_cli.run_command")
@@ -419,9 +421,10 @@ class TestNewCommands:
         with patch("sanity_cli.get_active_projects", return_value=["sanity-gravity"]):
             sanity_cli.shell_cmd(args)
 
-            # Verify user passed to docker exec
+            # Verify user passed to docker exec.
+            # PR #6: alphabetical plugin walk -> first ag-* tag is ag-xfce-kasm.
             expected_cmd = ("docker", "exec", "-it", "-u", "root",
-                            "sanity-gravity-ag-xfce-ssh-1", "zsh")
+                            "sanity-gravity-ag-xfce-kasm-1", "zsh")
             mock_check_call.assert_called_with(expected_cmd)
 
     @patch("sanity_cli.run_command")
@@ -436,7 +439,7 @@ class TestNewCommands:
             sanity_cli.shell_cmd(args)
 
             expected_cmd = ("docker", "exec", "-it", "-u", "developer",
-                            "sanity-gravity-ag-xfce-ssh-1", "bash")
+                            "sanity-gravity-ag-xfce-kasm-1", "bash")
             mock_check_call.assert_called_with(expected_cmd)
 
     @patch("sanity_cli.run_command")
@@ -454,11 +457,11 @@ class TestNewCommands:
 
             mock_check_call.assert_any_call(
                 ("docker", "exec", "-it", "-u", "developer",
-                 "sanity-gravity-ag-xfce-ssh-1", "zsh")
+                 "sanity-gravity-ag-xfce-kasm-1", "zsh")
             )
             mock_call.assert_called_once_with(
                 ("docker", "exec", "-it", "-u", "developer",
-                 "sanity-gravity-ag-xfce-ssh-1", "bash")
+                 "sanity-gravity-ag-xfce-kasm-1", "bash")
             )
 
     @patch("sanity_cli.run_command")
@@ -476,7 +479,7 @@ class TestNewCommands:
 
             mock_check_call.assert_any_call(
                 ("docker", "exec", "-it", "-u", "developer",
-                 "sanity-gravity-ag-xfce-ssh-1", "zsh")
+                 "sanity-gravity-ag-xfce-kasm-1", "zsh")
             )
             mock_call.assert_not_called()
 

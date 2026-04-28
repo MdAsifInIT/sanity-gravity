@@ -19,10 +19,10 @@ RUN arch=$(dpkg --print-architecture); \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Add Supervisor Config for Kasm
-COPY layers/connectors/kasm/supervisord.conf /etc/supervisor/conf.d/kasm.conf
+COPY supervisord.conf /etc/supervisor/conf.d/kasm.conf
 
 # Add Kasm Startup Script
-COPY layers/connectors/kasm/startup.sh /usr/local/bin/kasm-startup.sh
+COPY startup.sh /usr/local/bin/kasm-startup.sh
 RUN chmod +x /usr/local/bin/kasm-startup.sh
 
 # Expose Port 8444

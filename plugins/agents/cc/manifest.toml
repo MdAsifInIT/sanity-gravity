@@ -1,0 +1,12 @@
+[plugin]
+slug = "cc"
+name = "claude-cli"
+kind = "agent"
+api_version = "1"
+
+[capabilities]
+provides = []
+requires = []
+
+[build]
+dockerfile = "Dockerfile"

@@ -15,64 +15,117 @@ from pathlib import Path
 # Configuration
 COMPOSE_FILE = "docker-compose.yml"
 SANDBOX_DIR = "sandbox"
+PLUGINS_DIR = "plugins"
 
-# Dimension Registry: {slug: {name, requires_gui}}
-AGENTS = {
-    "ag": {"name": "antigravity", "requires_gui": True},
-    "gc": {"name": "gemini-cli",  "requires_gui": False},
-    "cc": {"name": "claude-cli",  "requires_gui": False},
-}
-CONNECTORS = {
-    "ssh":  {"name": "ssh",      "requires_gui": False},
-    "kasm": {"name": "kasm",     "requires_gui": True},
-    "vnc":  {"name": "vnc",      "requires_gui": True},
-}
-DESKTOPS = {
-    "xfce": {"name": "xfce", "has_gui": True},
-    "none": {"name": "none", "has_gui": False},
-}
+# Add lib to path before importing the manifest-driven registry. The
+# old hardcoded ``AGENTS`` / ``DESKTOPS`` / ``CONNECTORS`` dicts have
+# been replaced by ``plugins/<kind>/<slug>/manifest.toml`` discovery —
+# see ``lib/manifest.py`` and ``lib/plugins.py``.
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+
+from plugins import default_registry as _default_registry  # type: ignore[import-not-found]
+from capability import CapabilityConflictError, solve as _capability_solve  # type: ignore[import-not-found]
+from phase import Tag  # type: ignore[import-not-found]
+
+
+def _registry():
+    """Lazy accessor: load manifests from ``plugins/`` once per process."""
+    repo_root = os.path.dirname(os.path.abspath(__file__))
+    return _default_registry(os.path.join(repo_root, PLUGINS_DIR))
+
+
+# Backwards-compatible legacy dimension dicts derived from the registry.
+# Tests still import these as ``sanity_cli.AGENTS`` / ``CONNECTORS`` /
+# ``DESKTOPS``; we expose them as derived views with the same shape
+# (``{slug: {"name": ..., "requires_gui"/"has_gui": ...}}``) so the
+# behavioural contract is preserved without reintroducing hardcoded data.
+def _legacy_dim_dicts(reg):
+    """Project the registry into the legacy ``{slug: {name, ...}}`` shape."""
+    agents: dict[str, dict] = {}
+    for slug, m in reg.agents.items():
+        agents[slug] = {
+            "name": m.name,
+            "requires_gui": "display" in m.requires,
+        }
+    connectors: dict[str, dict] = {}
+    for slug, m in reg.connectors.items():
+        connectors[slug] = {
+            "name": m.name,
+            "requires_gui": "display" in m.requires,
+        }
+    desktops: dict[str, dict] = {}
+    for slug, m in reg.desktops.items():
+        desktops[slug] = {
+            "name": m.name,
+            "has_gui": "display" in m.provides,
+        }
+    return agents, connectors, desktops
+
+
+AGENTS, CONNECTORS, DESKTOPS = _legacy_dim_dicts(_registry())
 
 DEFAULT_TAG = "ag-xfce-kasm"
 
+
 def parse_tag(tag):
-    """Parses a dimension-based tag (e.g. 'ag-xfce-kasm') into (agent, desktop, connector).
-    Raises ValueError if the tag is invalid or violates constraints."""
+    """Parse a dimension tag into ``(agent, desktop, connector)``.
+
+    Validation goes through the manifest-driven registry: unknown slugs
+    raise ``ValueError`` with the legacy ``Unknown <kind>`` message, and
+    capability conflicts raise ``ValueError`` with a 'requires a GUI
+    desktop' phrasing kept for legacy tests / users (the underlying
+    solver is generic and supports arbitrary capabilities).
+    """
     parts = tag.split("-")
     if len(parts) != 3:
-        raise ValueError(f"Invalid tag format '{tag}'. Expected {{agent}}-{{desktop}}-{{connector}} (e.g. ag-xfce-kasm)")
+        raise ValueError(
+            f"Invalid tag format '{tag}'. Expected "
+            "{agent}-{desktop}-{connector} (e.g. ag-xfce-kasm)"
+        )
     agent, desktop, connector = parts
-    if agent not in AGENTS:
-        raise ValueError(f"Unknown agent '{agent}'. Valid: {', '.join(AGENTS.keys())}")
-    if desktop not in DESKTOPS:
-        raise ValueError(f"Unknown desktop '{desktop}'. Valid: {', '.join(DESKTOPS.keys())}")
-    if connector not in CONNECTORS:
-        raise ValueError(f"Unknown connector '{connector}'. Valid: {', '.join(CONNECTORS.keys())}")
-    # Constraint: GUI connector requires GUI desktop
-    if CONNECTORS[connector]["requires_gui"] and not DESKTOPS[desktop]["has_gui"]:
-        raise ValueError(f"Connector '{connector}' requires a GUI desktop, but '{desktop}' is headless")
-    # Constraint: GUI agent requires GUI desktop
-    if AGENTS[agent]["requires_gui"] and not DESKTOPS[desktop]["has_gui"]:
-        raise ValueError(f"Agent '{agent}' requires a GUI desktop, but '{desktop}' is headless")
+    reg = _registry()
+    if agent not in reg.agents:
+        raise ValueError(
+            f"Unknown agent '{agent}'. Valid: {', '.join(reg.agents.keys())}"
+        )
+    if desktop not in reg.desktops:
+        raise ValueError(
+            f"Unknown desktop '{desktop}'. Valid: {', '.join(reg.desktops.keys())}"
+        )
+    if connector not in reg.connectors:
+        raise ValueError(
+            f"Unknown connector '{connector}'. Valid: {', '.join(reg.connectors.keys())}"
+        )
+
+    parsed = Tag(agent=agent, desktop=desktop, connector=connector)
+    try:
+        _capability_solve(parsed, reg)
+    except CapabilityConflictError as exc:
+        # Map missing 'display' back to the legacy "requires a GUI desktop"
+        # message so users / tests see the same hint we shipped before.
+        if "display" in exc.missing:
+            connector_m = reg.connectors[connector]
+            agent_m = reg.agents[agent]
+            if "display" in connector_m.requires:
+                raise ValueError(
+                    f"Connector '{connector}' requires a GUI desktop, "
+                    f"but '{desktop}' is headless"
+                ) from exc
+            if "display" in agent_m.requires:
+                raise ValueError(
+                    f"Agent '{agent}' requires a GUI desktop, "
+                    f"but '{desktop}' is headless"
+                ) from exc
+        raise ValueError(str(exc)) from exc
     return agent, desktop, connector
 
+
 def generate_valid_tags():
-    """Returns a list of all valid tag combinations, filtered by constraints."""
-    tags = []
-    for a, a_info in AGENTS.items():
-        for d, d_info in DESKTOPS.items():
-            for c, c_info in CONNECTORS.items():
-                # Rule 1: GUI connector needs GUI desktop
-                if c_info["requires_gui"] and not d_info["has_gui"]:
-                    continue
-                # Rule 2: GUI agent needs GUI desktop
-                if a_info["requires_gui"] and not d_info["has_gui"]:
-                    continue
-                tags.append(f"{a}-{d}-{c}")
-    return tags
+    """Return all tag combinations whose plugins satisfy capabilities."""
+    return [str(t) for t in _registry().valid_tags()]
+
 
 VALID_TAGS = generate_valid_tags()
-# Add lib to path
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
 try:
     from proxy_manager import ProxyManager
 except ImportError:
@@ -98,7 +151,7 @@ except ImportError:  # pragma: no cover - lib is shipped with the repo
     ComposeService = None
 
 try:
-    from phase import Phase, Tag
+    from phase import Phase  # Tag is imported above for tag parsing
     from eventbus import EventBus
     from orchestrator import (
         Deps,
@@ -109,7 +162,6 @@ try:
     )
 except ImportError:  # pragma: no cover - lib is shipped with the repo
     Phase = None
-    Tag = None
     EventBus = None
     Deps = None
     PortRequest = None
@@ -173,24 +225,6 @@ def print_info(msg):
         return
     print(f"{Colors.OKCYAN}ℹ {msg}{Colors.ENDC}")
 
-
-def _emit_access(connector, fields):
-    """Emit AccessInfo through the reporter, falling back to plain prints.
-
-    Keys in ``fields`` carry their own colon + padding so the rendered
-    line stays byte-identical to the legacy inline prints.
-    """
-    if _reporter is not None:
-        _reporter.access(connector, fields)
-        return
-    titles = {"kasm": "Access KasmVNC:", "vnc": "Access VNC:", "ssh": "Access SSH:"}
-    print(f"\n{Colors.BOLD}{titles.get(connector, 'Access:')}{Colors.ENDC}")
-    for key, value in fields.items():
-        stripped = key.strip().rstrip(':').lower()
-        if stripped in ("url", "novnc web"):
-            print(f"  {key}{Colors.UNDERLINE}{value}{Colors.ENDC}")
-        else:
-            print(f"  {key}{value}")
 
 def _format_cmd_for_print(cmd):
     """Render argv list/tuple or str to a human-readable shell-ish form."""
@@ -326,25 +360,51 @@ def _get_unique_agent_desktop_pairs():
         pairs.add((a, d))
     return sorted(pairs)
 
+def _plugin_dockerfile(kind, slug):
+    """Return the manifest-declared Dockerfile path for a plugin."""
+    m = _registry().get(kind, slug)
+    return str(m.dockerfile_path)
+
+
+def _build_context_for(dockerfile_path):
+    """Pick the docker build context for a given Dockerfile.
+
+    - ``sandbox/Dockerfile.base`` keeps ``sandbox/`` as its context so it
+      can ``COPY rootfs /``.
+    - Plugin Dockerfiles use **their own directory** as the context. Only
+      ``kasm`` / ``vnc`` actually ``COPY`` local files (supervisord.conf,
+      startup.sh) — keeping the context tight prevents accidental reads
+      of the rest of the repo and keeps build-cache hashes stable.
+    """
+    df = os.path.abspath(dockerfile_path)
+    base_df = os.path.abspath(os.path.join(SANDBOX_DIR, "Dockerfile.base"))
+    if df == base_df:
+        return SANDBOX_DIR
+    return os.path.dirname(dockerfile_path)
+
+
 def resolve_build_chain(tag):
-    """Returns the build chain for a final tag as list of (dockerfile, image_name, parent_image_name|None).
-    The chain includes all intermediate layers needed."""
+    """Build chain for a final tag as ``[(dockerfile, image_name, parent_or_None)]``.
+
+    Per-step build contexts are not in the tuple (legacy callers unpack
+    3-tuples); resolve them via :func:`_build_context_for` at build time.
+    """
     agent, desktop, connector = parse_tag(tag)
     return [
-        (os.path.join(SANDBOX_DIR, "Dockerfile.base"),
-         "_base", None),
-        (os.path.join(SANDBOX_DIR, "layers", "desktops", desktop, "Dockerfile"),
-         f"_base-{desktop}", "_base"),
-        (os.path.join(SANDBOX_DIR, "layers", "agents", agent, "Dockerfile"),
+        (os.path.join(SANDBOX_DIR, "Dockerfile.base"), "_base", None),
+        (_plugin_dockerfile("desktop", desktop), f"_base-{desktop}", "_base"),
+        (_plugin_dockerfile("agent", agent),
          f"_{agent}-{desktop}", f"_base-{desktop}"),
-        (os.path.join(SANDBOX_DIR, "layers", "connectors", connector, "Dockerfile"),
+        (_plugin_dockerfile("connector", connector),
          tag, f"_{agent}-{desktop}"),
     ]
+
 
 def resolve_parent(tag):
     """Returns the immediate parent intermediate image name for a final tag."""
     agent, desktop, _ = parse_tag(tag)
     return f"_{agent}-{desktop}"
+
 
 def generate_intermediates():
     """Returns ordered list of all intermediate image names to build."""
@@ -358,6 +418,7 @@ def generate_intermediates():
         intermediates.append(f"_{a}-{d}")
     return intermediates
 
+
 def _resolve_intermediate_chain(target):
     """Returns the build chain for an intermediate image."""
     # _base
@@ -366,24 +427,28 @@ def _resolve_intermediate_chain(target):
     # _base-{desktop}
     if target.startswith("_base-"):
         desktop = target[len("_base-"):]
+        if desktop not in _registry().desktops:
+            raise ValueError(f"Unknown intermediate target: {target}")
         return [
             (os.path.join(SANDBOX_DIR, "Dockerfile.base"), "_base", None),
-            (os.path.join(SANDBOX_DIR, "layers", "desktops", desktop, "Dockerfile"),
-             target, "_base"),
+            (_plugin_dockerfile("desktop", desktop), target, "_base"),
         ]
     # _{agent}-{desktop}
     if target.startswith("_"):
         parts = target[1:].split("-")
         if len(parts) == 2:
             agent, desktop = parts
-            return [
-                (os.path.join(SANDBOX_DIR, "Dockerfile.base"), "_base", None),
-                (os.path.join(SANDBOX_DIR, "layers", "desktops", desktop, "Dockerfile"),
-                 f"_base-{desktop}", "_base"),
-                (os.path.join(SANDBOX_DIR, "layers", "agents", agent, "Dockerfile"),
-                 target, f"_base-{desktop}"),
-            ]
+            reg = _registry()
+            if agent in reg.agents and desktop in reg.desktops:
+                return [
+                    (os.path.join(SANDBOX_DIR, "Dockerfile.base"), "_base", None),
+                    (_plugin_dockerfile("desktop", desktop),
+                     f"_base-{desktop}", "_base"),
+                    (_plugin_dockerfile("agent", agent),
+                     target, f"_base-{desktop}"),
+                ]
     raise ValueError(f"Unknown intermediate target: {target}")
+
 
 def _build_single(dockerfile, image_name, parent_name, no_cache=False, base_image_override=None):
     """Build a single layer image."""
@@ -392,12 +457,13 @@ def _build_single(dockerfile, image_name, parent_name, no_cache=False, base_imag
         print_error(f"Layer file not found: {dockerfile}")
         sys.exit(1)
 
+    context = _build_context_for(dockerfile)
     cb = CommandBuilder("docker", "build").flag("--no-cache", when=no_cache)
     if base_image_override:
         cb.opt("--build-arg", f"BASE_IMAGE={base_image_override}")
     elif parent_name is not None:
         cb.opt("--build-arg", f"BASE_IMAGE={_image_tag(parent_name)}")
-    cb.opt("-f", dockerfile).opt("-t", tag).positional(SANDBOX_DIR)
+    cb.opt("-f", dockerfile).opt("-t", tag).positional(context)
     run_command(cb.build())
 
 def build_layered(tag, no_cache=False, base_image=None):
@@ -408,7 +474,7 @@ def build_layered(tag, no_cache=False, base_image=None):
     if base_image:
         # CI shortcut: only build the connector layer on top of the provided parent
         agent, desktop, connector = parse_tag(tag)
-        dockerfile = os.path.join(SANDBOX_DIR, "layers", "connectors", connector, "Dockerfile")
+        dockerfile = _plugin_dockerfile("connector", connector)
         print_info(f"  Building {_image_tag(tag)} (connector only, from {base_image})")
         _build_single(dockerfile, tag, None, no_cache=no_cache,
                        base_image_override=base_image)
@@ -423,7 +489,7 @@ def build_layered(tag, no_cache=False, base_image=None):
         if image_name != tag and not no_cache and _image_exists(full_tag):
             print_info(f"  [{i}/{total}] Cache hit: {full_tag}")
             continue
-        layer_label = os.path.relpath(dockerfile, SANDBOX_DIR)
+        layer_label = os.path.relpath(dockerfile)
         print_info(f"  [{i}/{total}] Building {full_tag} ({layer_label})")
         _build_single(dockerfile, image_name, parent_name, no_cache=no_cache)
     print_success(f"Built {_image_tag(tag)}")
@@ -440,7 +506,7 @@ def build_intermediates(no_cache=False):
         chain = _resolve_intermediate_chain(name)
         # Only build the last step (parents already built or cached)
         dockerfile, image_name, parent_name = chain[-1]
-        layer_label = os.path.relpath(dockerfile, SANDBOX_DIR)
+        layer_label = os.path.relpath(dockerfile)
         print_info(f"  [{i}/{total}] Building {full_tag} ({layer_label})")
         _build_single(dockerfile, image_name, parent_name, no_cache=no_cache)
     print_success(f"Built {total} intermediate images")
@@ -509,40 +575,41 @@ def build_layer_target(layer_type, target=None, no_cache=False):
     sys.exit(1)
 
 def generate_compose_for_tag(tag):
-    """Generates a docker-compose YAML for a modular tag via ComposeBuilder."""
+    """Generate the per-tag docker-compose YAML, driven by the connector manifest.
+
+    Ports / compose params / environment overrides come from the
+    connector plugin's ``manifest.toml``: the dispatch on ``connector ==
+    "kasm" | "vnc"`` is gone, so adding e.g. an ``rdp`` connector needs
+    no edits here.
+    """
     agent, desktop, connector = parse_tag(tag)
+    reg = _registry()
+    connector_m = reg.connectors[connector]
 
     # Service name is the tag itself (with dashes, valid for compose)
     service_name = tag
 
     image = f"${{SANITY_IMAGE_{tag.upper().replace('-', '_')}:-sanity-gravity:{tag}}}"
 
-    # Base environment (shell-expanded HOST_* defaults).
+    # Base environment (shell-expanded HOST_* defaults). Connector
+    # manifests can append further entries via [environment].
     environment = {
         "HOST_UID": "${HOST_UID:-1000}",
         "HOST_GID": "${HOST_GID:-1000}",
         "HOST_USER": "${HOST_USER:-developer}",
         "HOST_PASSWORD": "${HOST_PASSWORD:-antigravity}",
     }
+    for k, v in connector_m.environment:
+        environment[k] = v
 
-    # Base ports (every connector exposes SSH). YAML emits these as plain
-    # strings; docker-compose accepts the unquoted form for ${VAR}-prefixed
-    # mappings since they're unambiguous.
-    ports = ["${SSH_HOST_PORT:-2222}:22"]
+    # Ports: emit one ``${ENV:-default}:internal`` mapping per declared
+    # connector port. YAML emits these as plain strings; docker-compose
+    # accepts the unquoted form for ${VAR}-prefixed mappings.
+    ports = [
+        f"${{{p.env_var}:-{p.default}}}:{p.internal}" for p in connector_m.ports
+    ]
 
-    # Connector-specific overlays.
-    shm_size = restart = stop_grace_period = None
-    if connector == "kasm":
-        ports.append("${KASM_PORT:-8444}:8444")
-        shm_size, restart, stop_grace_period = "512m", "unless-stopped", "30s"
-    elif connector == "vnc":
-        ports.append("${VNC_PORT:-5901}:5901")
-        ports.append("${NOVNC_PORT:-6901}:6901")
-        environment["VNC_PW"] = "${VNC_PW:-antigravity}"
-        environment["VNC_RESOLUTION"] = "${VNC_RESOLUTION:-1280x720}"
-        environment["VNC_DEPTH"] = "${VNC_DEPTH:-24}"
-        shm_size, restart, stop_grace_period = "512m", "unless-stopped", "30s"
-
+    overlay = connector_m.compose
     svc = ComposeService(
         name=service_name,
         image=image,
@@ -551,9 +618,9 @@ def generate_compose_for_tag(tag):
         volumes=["${WORKSPACE_DIR:-./workspace}:/home/${HOST_USER:-developer}/workspace"],
         ports=ports,
         network_mode="bridge",
-        shm_size=shm_size,
-        restart=restart,
-        stop_grace_period=stop_grace_period,
+        shm_size=overlay.shm_size,
+        restart=overlay.restart,
+        stop_grace_period=overlay.stop_grace_period,
         ulimits={"nofile": {"soft": 65536, "hard": 65536}},
         labels={"sanity.gravity.managed": "true"},
     )
@@ -1728,6 +1795,52 @@ def list_variants(args):
         marker = f" {Colors.OKGREEN}(default){Colors.ENDC}" if tag == DEFAULT_TAG else ""
         print(f"    {Colors.OKCYAN}{tag}{Colors.ENDC}{marker}")
 
+
+def plugins_list(args):
+    """List manifest-driven plugins discovered under ``plugins/``.
+
+    Output is grouped by kind. Each entry shows slug, display name,
+    capabilities (provides/requires), and (for connectors) declared
+    ports. Goes through the reporter so ``--log-format=json`` users get
+    a structured Info stream for free.
+    """
+    reg = _registry()
+
+    def _render_caps(m):
+        provides = ", ".join(m.provides) or "—"
+        requires = ", ".join(m.requires) or "—"
+        return f"provides=[{provides}] requires=[{requires}]"
+
+    def _render_ports(m):
+        if not m.ports:
+            return ""
+        return " ports=[" + ", ".join(
+            f"{p.label}:{p.internal}" for p in m.ports
+        ) + "]"
+
+    print_header("Registered Plugins")
+
+    sections = (
+        ("Agents", reg.agents),
+        ("Desktops", reg.desktops),
+        ("Connectors", reg.connectors),
+    )
+    for label, bucket in sections:
+        print(f"\n  {Colors.BOLD}{label}:{Colors.ENDC}")
+        if not bucket:
+            print(f"    {Colors.WARNING}(none){Colors.ENDC}")
+            continue
+        for slug, m in bucket.items():
+            line = (
+                f"    {Colors.OKCYAN}{slug}{Colors.ENDC} = {m.name}  "
+                f"{_render_caps(m)}{_render_ports(m)}"
+            )
+            print(line)
+
+    total = len(reg.agents) + len(reg.desktops) + len(reg.connectors)
+    print_success(f"{total} plugins registered")
+
+
 def proxy_setup_cmd(args):
     """Sets up the SSH Proxy."""
     if not ProxyManager:
@@ -1994,6 +2107,18 @@ def main():
     parser_snapshot.add_argument("--tag", "-t", required=True, help="Tag for the new image (e.g. my-backup:v1)")
     parser_snapshot.set_defaults(func=snapshot_cmd)
     
+    # Plugins Command
+    parser_plugins = subparsers.add_parser(
+        "plugins", help="Inspect manifest-driven plugins (agents/desktops/connectors)"
+    )
+    plugins_subparsers = parser_plugins.add_subparsers(
+        dest="plugins_command", required=True
+    )
+    plugins_list_p = plugins_subparsers.add_parser(
+        "list", help="List registered plugins (kind, slug, capabilities, ports)"
+    )
+    plugins_list_p.set_defaults(func=plugins_list)
+
     # Proxy Command
     parser_proxy = subparsers.add_parser("proxy", help="Manage SSH Agent Socket Proxy")
     proxy_subparsers = parser_proxy.add_subparsers(dest="proxy_command", required=True)

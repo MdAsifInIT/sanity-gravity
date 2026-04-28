@@ -33,7 +33,7 @@ class TestIdeCommand:
         
         sanity_cli.ide_cmd(args)
         
-        cname = "sanity-gravity-ag-xfce-ssh-1"
+        cname = "sanity-gravity-ag-xfce-kasm-1"
         base_dir = os.path.dirname(os.path.abspath(sanity_cli.__file__))
         cli_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli")
         cleanup_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "chrome-cleanup.sh")
@@ -62,7 +62,7 @@ class TestIdeCommand:
         
         sanity_cli.ide_cmd(args)
         
-        cname = "my-project-ag-xfce-ssh-1"
+        cname = "my-project-ag-xfce-kasm-1"
         base_dir = os.path.dirname(os.path.abspath(sanity_cli.__file__))
         cli_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli")
         cleanup_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "chrome-cleanup.sh")

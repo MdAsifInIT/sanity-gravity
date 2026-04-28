@@ -1,0 +1,35 @@
+[plugin]
+slug = "kasm"
+name = "KasmVNC"
+kind = "connector"
+api_version = "1"
+
+[capabilities]
+provides = ["http-gui"]
+requires = ["display"]
+
+[build]
+dockerfile = "Dockerfile"
+
+[ports.http]
+internal = 8444
+default = 8444
+env_var = "KASM_PORT"
+
+[ports.ssh]
+internal = 22
+default = 2222
+env_var = "SSH_HOST_PORT"
+
+[compose]
+shm_size = "512m"
+restart = "unless-stopped"
+stop_grace_period = "30s"
+
+[announce]
+template = """
+URL:      https://localhost:{ports.http}
+SSH:      ssh -p {ports.ssh} {user}@localhost
+User:     {user}
+Pass:     {password}
+"""

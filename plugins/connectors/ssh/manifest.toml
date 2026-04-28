@@ -1,0 +1,24 @@
+[plugin]
+slug = "ssh"
+name = "ssh"
+kind = "connector"
+api_version = "1"
+
+[capabilities]
+provides = ["remote-shell"]
+requires = []
+
+[build]
+dockerfile = "Dockerfile"
+
+[ports.ssh]
+internal = 22
+default = 2222
+env_var = "SSH_HOST_PORT"
+
+[announce]
+template = """
+SSH:        ssh -p {ports.ssh} {user}@localhost
+Pass:       {password}
+Shell:      docker exec -it -u {user} {container_name} /bin/bash
+"""
