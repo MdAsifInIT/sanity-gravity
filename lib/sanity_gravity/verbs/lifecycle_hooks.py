@@ -64,9 +64,7 @@ def lifecycle_check_existence(ctx) -> None:
 
 def lifecycle_clean_prompt(ctx) -> None:
     """DOWN_BEFORE/50: ``clean`` only — interactive confirmation."""
-    if not getattr(ctx, "force", True) and getattr(ctx, "force", None) is not None:
-        # CleanContext only — not applicable to plain DownContext.
-        pass
+    # CleanContext has a `force` attribute; plain DownContext does not.
     if not hasattr(ctx, "force"):
         return
     if ctx.force:
