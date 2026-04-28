@@ -136,3 +136,32 @@ $EDITOR plugins/connectors/rdp/{manifest.toml,Dockerfile}
 ```
 
 No core code edits — the kernel re-discovers the plugin tree on each run.
+
+## CLI Package Layout
+
+The `sanity-cli` script at the repo root is a 20-line shim. All CLI logic lives
+in the `lib/sanity_gravity/` package:
+
+```
+lib/sanity_gravity/
+├── cli/         # argparse setup + entry point + dispatch
+├── verbs/       # one file per CLI verb (build, up, down, status, …)
+├── core/        # microkernel: orchestrator, eventbus, reporter, command
+├── domain/      # pure data: Tag, Phase, capability solver
+├── effects/     # Effect-First execution: Action types + Executor (dry-run)
+├── compose/     # type-safe docker-compose YAML builder
+├── plugins/     # manifest loader + PluginRegistry
+├── infra/       # I/O implementations (proxy_manager, …)
+└── events.py    # event hierarchy emitted by Reporter
+```
+
+Layer rules (enforced by code review, not yet by import-linter):
+
+- `domain/` imports nothing else in the package (pure).
+- `core/` may import from `domain/`.
+- `compose/`, `plugins/`, `effects/` may import from `core/` and `domain/`.
+- `verbs/` may import from anywhere except `cli/`.
+- `cli/` is the entry layer; it imports `verbs/` and dispatches.
+
+Tests live under `tests/unit/` (no Docker required) and `tests/integration/`
+(spin up real containers).
