@@ -90,6 +90,12 @@ except ImportError:  # pragma: no cover - lib is shipped with the repo
     build_default_reporter = None
     AccessInfo = None
 
+try:
+    from compose import ComposeBuilder, ComposeService
+except ImportError:  # pragma: no cover - lib is shipped with the repo
+    ComposeBuilder = None
+    ComposeService = None
+
 # ANSI Colors
 class Colors:
     HEADER = '\033[95m'
@@ -475,61 +481,58 @@ def build_layer_target(layer_type, target=None, no_cache=False):
     sys.exit(1)
 
 def generate_compose_for_tag(tag):
-    """Generates a temporary docker-compose YAML for a modular tag."""
+    """Generates a docker-compose YAML for a modular tag via ComposeBuilder."""
     agent, desktop, connector = parse_tag(tag)
 
     # Service name is the tag itself (with dashes, valid for compose)
     service_name = tag
 
-    # Determine ports and settings based on connector
-    ports = ['      - "${SSH_HOST_PORT:-2222}:22"']
-    extra_env = []
-    extra_settings = ""
+    image = f"${{SANITY_IMAGE_{tag.upper().replace('-', '_')}:-sanity-gravity:{tag}}}"
 
+    # Base environment (shell-expanded HOST_* defaults).
+    environment = {
+        "HOST_UID": "${HOST_UID:-1000}",
+        "HOST_GID": "${HOST_GID:-1000}",
+        "HOST_USER": "${HOST_USER:-developer}",
+        "HOST_PASSWORD": "${HOST_PASSWORD:-antigravity}",
+    }
+
+    # Base ports (every connector exposes SSH). YAML emits these as plain
+    # strings; docker-compose accepts the unquoted form for ${VAR}-prefixed
+    # mappings since they're unambiguous.
+    ports = ["${SSH_HOST_PORT:-2222}:22"]
+
+    # Connector-specific overlays.
+    shm_size = restart = stop_grace_period = None
     if connector == "kasm":
-        ports.append('      - "${KASM_PORT:-8444}:8444"')
-        extra_settings = "    shm_size: 512m\n    restart: unless-stopped\n    stop_grace_period: 30s\n"
+        ports.append("${KASM_PORT:-8444}:8444")
+        shm_size, restart, stop_grace_period = "512m", "unless-stopped", "30s"
     elif connector == "vnc":
-        ports.append('      - "${VNC_PORT:-5901}:5901"')
-        ports.append('      - "${NOVNC_PORT:-6901}:6901"')
-        extra_env.append("      - VNC_PW=${VNC_PW:-antigravity}")
-        extra_env.append("      - VNC_RESOLUTION=${VNC_RESOLUTION:-1280x720}")
-        extra_env.append("      - VNC_DEPTH=${VNC_DEPTH:-24}")
-        extra_settings = "    shm_size: 512m\n    restart: unless-stopped\n    stop_grace_period: 30s\n"
+        ports.append("${VNC_PORT:-5901}:5901")
+        ports.append("${NOVNC_PORT:-6901}:6901")
+        environment["VNC_PW"] = "${VNC_PW:-antigravity}"
+        environment["VNC_RESOLUTION"] = "${VNC_RESOLUTION:-1280x720}"
+        environment["VNC_DEPTH"] = "${VNC_DEPTH:-24}"
+        shm_size, restart, stop_grace_period = "512m", "unless-stopped", "30s"
 
-    ports_str = "\n".join(ports)
-    env_lines = [
-        "      - HOST_UID=${HOST_UID:-1000}",
-        "      - HOST_GID=${HOST_GID:-1000}",
-        "      - HOST_USER=${HOST_USER:-developer}",
-        "      - HOST_PASSWORD=${HOST_PASSWORD:-antigravity}",
-    ] + extra_env
-    env_str = "\n".join(env_lines)
-
-    content = f"""services:
-  {service_name}:
-    image: ${{SANITY_IMAGE_{tag.upper().replace('-', '_')}:-sanity-gravity:{tag}}}
-    command: [ "/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf" ]
-    environment:
-{env_str}
-    volumes:
-      - ${{WORKSPACE_DIR:-./workspace}}:/home/${{HOST_USER:-developer}}/workspace
-    ports:
-{ports_str}
-    network_mode: bridge
-{extra_settings}    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
-    labels:
-      sanity.gravity.managed: "true"
-"""
+    svc = ComposeService(
+        name=service_name,
+        image=image,
+        command=["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"],
+        environment=environment,
+        volumes=["${WORKSPACE_DIR:-./workspace}:/home/${HOST_USER:-developer}/workspace"],
+        ports=ports,
+        network_mode="bridge",
+        shm_size=shm_size,
+        restart=restart,
+        stop_grace_period=stop_grace_period,
+        ulimits={"nofile": {"soft": 65536, "hard": 65536}},
+        labels={"sanity.gravity.managed": "true"},
+    )
 
     config_dir = "config"
-    os.makedirs(config_dir, exist_ok=True)
     output_file = os.path.join(config_dir, f"docker-compose.{tag}.yml")
-    with open(output_file, "w") as f:
-        f.write(content)
+    ComposeBuilder().add_service(svc).write(output_file)
 
     return output_file, service_name
 
@@ -810,78 +813,53 @@ def generate_git_compose(username, service_name=None):
     
     if os.path.exists(gitconfig):
         # Mount as read-only to prevent accidental corruption
-        volumes.append(f"      - {gitconfig}:/home/{username}/.gitconfig")
+        volumes.append(f"{gitconfig}:/home/{username}/.gitconfig")
         print_success(f"Found .gitconfig")
     else:
         print_info(".gitconfig not found on host.")
-    
+
     # Only mount if we have a valid PROXY socket
     if ssh_auth_sock and os.path.exists(ssh_auth_sock):
         # Mount SSH Agent Socket
-        volumes.append(f"      - {ssh_auth_sock}:/tmp/ssh-agent.sock")
+        volumes.append(f"{ssh_auth_sock}:/tmp/ssh-agent.sock")
         environment["SSH_AUTH_SOCK"] = "/tmp/ssh-agent.sock"
     else:
         # Fallback to NOTHING (Strict Policy)
         pass
-        
+
     if not volumes:
         print_info("Git Context Sharing skipped (no config found).")
         return None
-        
-    # Generate YAML content manually to avoid dependencies
+
     services = [service_name] if service_name else VALID_TAGS
-    content = "services:\n"
+    builder = ComposeBuilder()
     for svc in services:
-        content += f"  {svc}:\n"
-
-        if volumes:
-            content += "    volumes:\n"
-            for vol in volumes:
-                content += f"{vol}\n"
-
+        builder.add_service(ComposeService(name=svc, image=""))
+        builder.merge_volumes(svc, volumes)
         if environment:
-            content += "    environment:\n"
-            for k, v in environment.items():
-                content += f"      - {k}={v}\n"
+            builder.merge_environment(svc, environment)
 
     config_dir = "config"
-    os.makedirs(config_dir, exist_ok=True)
     output_file = os.path.join(config_dir, "docker-compose.git.yml")
-
-    with open(output_file, "w") as f:
-        f.write(content)
+    builder.write(output_file)
 
     return output_file
 
 def generate_resource_compose(cpus, memory, service_name=None):
     """Generates a docker-compose override to apply resource limits."""
-    content = "services:\n"
-
-    limits_block = "    deploy:\n      resources:\n        limits:\n"
-    has_limits = False
-
-    if cpus:
-        limits_block += f"          cpus: '{cpus}'\n"
-        has_limits = True
-    if memory:
-        limits_block += f"          memory: '{memory}'\n"
-        has_limits = True
-
-    if not has_limits:
+    if not cpus and not memory:
         return None
 
     services = [service_name] if service_name else VALID_TAGS
+    builder = ComposeBuilder()
     for svc in services:
-        content += f"  {svc}:\n"
-        content += limits_block
+        builder.add_service(ComposeService(name=svc, image=""))
+        builder.set_deploy_resources(svc, cpus=cpus, memory=memory)
 
     config_dir = "config"
-    os.makedirs(config_dir, exist_ok=True)
     output_file = os.path.join(config_dir, "docker-compose.resources.yml")
-    
-    with open(output_file, "w") as f:
-        f.write(content)
-        
+    builder.write(output_file)
+
     return output_file
 
 def sync_config(project_name, container_name, username, config_source="config"):
