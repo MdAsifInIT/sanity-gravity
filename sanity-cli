@@ -81,6 +81,14 @@ try:
 except ImportError:  # pragma: no cover - lib is shipped with the repo
     CommandBuilder = None
 
+try:
+    from reporter import Reporter, build_default_reporter
+    from events import AccessInfo
+except ImportError:  # pragma: no cover - lib is shipped with the repo
+    Reporter = None
+    build_default_reporter = None
+    AccessInfo = None
+
 # ANSI Colors
 class Colors:
     HEADER = '\033[95m'
@@ -93,17 +101,61 @@ class Colors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
+# Module-level reporter handle. Built once in ``main()`` and routed
+# through every print_* helper. When unset (e.g. during test imports
+# that bypass ``main()``), we fall back to plain coloured prints so
+# nothing crashes.
+_reporter = None
+
+
+def set_reporter(reporter):
+    """Install the active Reporter for this process."""
+    global _reporter
+    _reporter = reporter
+
+
 def print_header(msg):
+    if _reporter is not None:
+        _reporter.header(msg)
+        return
     print(f"{Colors.HEADER}{Colors.BOLD}>>> {msg}{Colors.ENDC}")
 
 def print_success(msg):
+    if _reporter is not None:
+        _reporter.success(msg)
+        return
     print(f"{Colors.OKGREEN}✔ {msg}{Colors.ENDC}")
 
 def print_error(msg):
+    if _reporter is not None:
+        _reporter.error(msg)
+        return
     print(f"{Colors.FAIL}✘ {msg}{Colors.ENDC}")
 
 def print_info(msg):
+    if _reporter is not None:
+        _reporter.info(msg)
+        return
     print(f"{Colors.OKCYAN}ℹ {msg}{Colors.ENDC}")
+
+
+def _emit_access(connector, fields):
+    """Emit AccessInfo through the reporter, falling back to plain prints.
+
+    Keys in ``fields`` carry their own colon + padding so the rendered
+    line stays byte-identical to the legacy inline prints.
+    """
+    if _reporter is not None:
+        _reporter.access(connector, fields)
+        return
+    titles = {"kasm": "Access KasmVNC:", "vnc": "Access VNC:", "ssh": "Access SSH:"}
+    print(f"\n{Colors.BOLD}{titles.get(connector, 'Access:')}{Colors.ENDC}")
+    for key, value in fields.items():
+        stripped = key.strip().rstrip(':').lower()
+        if stripped in ("url", "novnc web"):
+            print(f"  {key}{Colors.UNDERLINE}{value}{Colors.ENDC}")
+        else:
+            print(f"  {key}{value}")
 
 def _format_cmd_for_print(cmd):
     """Render argv list/tuple or str to a human-readable shell-ish form."""
@@ -124,7 +176,12 @@ def run_command(cmd, cwd=None, capture=False, check=True, env=None, shell=None):
     """
     use_shell = shell if shell is not None else isinstance(cmd, str)
     if not capture:
-        print(f"{Colors.OKBLUE}$ {_format_cmd_for_print(cmd)}{Colors.ENDC}")
+        if _reporter is not None:
+            # Pass argv through structurally; AnsiSink renders the same
+            # ``$ cmd`` line, JsonlSink emits a CommandIssued record.
+            _reporter.command(tuple(cmd) if isinstance(cmd, (list, tuple)) else cmd)
+        else:
+            print(f"{Colors.OKBLUE}$ {_format_cmd_for_print(cmd)}{Colors.ENDC}")
 
     # Merge env with current process environment so shell-style "VAR=val cmd"
     # rewrites become subprocess(env=...) rewrites without dropping inherited
@@ -672,23 +729,28 @@ def up(args):
 
     print_success(f"{target} is running.")
 
+    # Build AccessInfo fields. Keys carry the full ``Label: <pad>`` so
+    # AnsiSink renders byte-identically to the legacy inline prints.
     if connector == "kasm":
-        print(f"\n{Colors.BOLD}Access KasmVNC:{Colors.ENDC}")
-        print(f"  URL:      {Colors.UNDERLINE}https://localhost:{kasm_port}{Colors.ENDC}")
-        print(f"  SSH:      ssh -p {ssh_port} {username}@localhost")
-        print(f"  User:     {username}")
-        print(f"  Pass:     {password}")
+        _emit_access("kasm", {
+            "URL:      ": f"https://localhost:{kasm_port}",
+            "SSH:      ": f"ssh -p {ssh_port} {username}@localhost",
+            "User:     ": username,
+            "Pass:     ": password,
+        })
     elif connector == "vnc":
-        print(f"\n{Colors.BOLD}Access VNC:{Colors.ENDC}")
-        print(f"  VNC Client: localhost:{vnc_port}")
-        print(f"  noVNC Web:  {Colors.UNDERLINE}http://localhost:{novnc_port}/vnc.html{Colors.ENDC}")
-        print(f"  SSH:        ssh -p {ssh_port} {username}@localhost")
-        print(f"  Password:   {password}")
+        _emit_access("vnc", {
+            "VNC Client: ": f"localhost:{vnc_port}",
+            "noVNC Web:  ": f"http://localhost:{novnc_port}/vnc.html",
+            "SSH:        ": f"ssh -p {ssh_port} {username}@localhost",
+            "Password:   ": password,
+        })
     elif connector == "ssh":
-        print(f"\n{Colors.BOLD}Access SSH:{Colors.ENDC}")
-        print(f"  SSH:        ssh -p {ssh_port} {username}@localhost")
-        print(f"  Pass:       {password}")
-        print(f"  Shell:      docker exec -it -u {username} {project_name}-{service_name}-1 /bin/bash")
+        _emit_access("ssh", {
+            "SSH:        ": f"ssh -p {ssh_port} {username}@localhost",
+            "Pass:       ": password,
+            "Shell:      ": f"docker exec -it -u {username} {project_name}-{service_name}-1 /bin/bash",
+        })
 
     # Sync Configuration
     container_name = f"{project_name}-{service_name}-1"
@@ -921,6 +983,9 @@ def sync_config(project_name, container_name, username, config_source="config"):
         print_success("Configuration synced successfully.")
 
 def print_warning(msg):
+    if _reporter is not None:
+        _reporter.warning(msg)
+        return
     print(f"{Colors.WARNING}⚠ {msg}{Colors.ENDC}")
 
 def get_project_env(project_name):
@@ -1814,6 +1879,12 @@ def ide_cmd(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Antigravity Sandbox CLI")
+    parser.add_argument(
+        "--log-format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format for narration ('text' = colourised, 'json' = JSONL events)",
+    )
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
     # Check Command
@@ -1962,10 +2033,19 @@ def main():
 
 
     args = parser.parse_args()
-    
+
     if not args.command:
         parser.print_help()
         sys.exit(1)
+
+    # Build the reporter once, install it as the module-level handle so
+    # legacy print_* helpers route through it, and also expose it on
+    # ``args`` for handlers that want to emit events directly.
+    if build_default_reporter is not None:
+        reporter = build_default_reporter(log_format=getattr(args, "log_format", "text"))
+        set_reporter(reporter)
+        args.reporter = reporter
+        reporter.header(f"run-id: {reporter.run_id}")
 
     try:
         args.func(args)
