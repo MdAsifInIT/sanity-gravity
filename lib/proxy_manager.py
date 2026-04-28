@@ -19,11 +19,13 @@ class ProxyManager:
         self.unit_file_path = os.path.join(self.home, ".config/systemd/user", f"{self.service_name}.service")
 
     def run_command(self, cmd, capture=False, check=True):
+        # Argv list/tuple is preferred (shell=False). String form is supported
+        # for back-compat but no callers in this module use it any more.
         use_shell = isinstance(cmd, str)
         if capture:
             result = subprocess.run(cmd, shell=use_shell, check=check, capture_output=True, text=True)
             return result.stdout.strip()
-        
+
         if check:
             subprocess.check_call(cmd, shell=use_shell, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
@@ -186,7 +188,10 @@ WantedBy=default.target
         # Stop and Disable
         if self.is_enabled():
             try:
-                self.run_command(f"systemctl --user disable --now {self.service_name}", check=False)
+                self.run_command(
+                    ["systemctl", "--user", "disable", "--now", self.service_name],
+                    check=False,
+                )
             except Exception:
                 pass
         

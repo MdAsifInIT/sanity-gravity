@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import shlex
 import subprocess
 import os
 import re
@@ -75,6 +76,10 @@ try:
 except ImportError:
     # Fallback or silent fail if lib not found (should not happen in repo)
     ProxyManager = None
+try:
+    from command import CommandBuilder
+except ImportError:  # pragma: no cover - lib is shipped with the repo
+    CommandBuilder = None
 
 # ANSI Colors
 class Colors:
@@ -100,16 +105,44 @@ def print_error(msg):
 def print_info(msg):
     print(f"{Colors.OKCYAN}ℹ {msg}{Colors.ENDC}")
 
-def run_command(cmd, cwd=None, capture=False, check=True):
-    """Runs a shell command."""
+def _format_cmd_for_print(cmd):
+    """Render argv list/tuple or str to a human-readable shell-ish form."""
+    if isinstance(cmd, (list, tuple)):
+        return " ".join(shlex.quote(str(p)) for p in cmd)
+    return cmd
+
+def run_command(cmd, cwd=None, capture=False, check=True, env=None, shell=None):
+    """Runs a subprocess command.
+
+    Accepts either:
+    - ``Sequence[str]`` argv (preferred, runs with ``shell=False``), or
+    - ``str`` (legacy: runs with ``shell=True``; required for pipes/redirects).
+
+    The ``shell`` kwarg is inferred from the type of ``cmd`` unless
+    explicitly overridden. ``env`` (a mapping) is merged with ``os.environ``
+    so callers no longer need to inline ``K=V K=V`` env prefixes.
+    """
+    use_shell = shell if shell is not None else isinstance(cmd, str)
     if not capture:
-        print(f"{Colors.OKBLUE}$ {cmd}{Colors.ENDC}")
+        print(f"{Colors.OKBLUE}$ {_format_cmd_for_print(cmd)}{Colors.ENDC}")
+
+    # Merge env with current process environment so shell-style "VAR=val cmd"
+    # rewrites become subprocess(env=...) rewrites without dropping inherited
+    # PATH / HOME / etc.
+    run_env = None
+    if env is not None:
+        run_env = os.environ.copy()
+        run_env.update({k: str(v) for k, v in env.items()})
+
     try:
         if capture:
-            result = subprocess.run(cmd, shell=True, cwd=cwd, check=check, capture_output=True, text=True)
+            result = subprocess.run(
+                cmd, shell=use_shell, cwd=cwd, check=check,
+                capture_output=True, text=True, env=run_env,
+            )
             return result.stdout.strip()
         else:
-            subprocess.check_call(cmd, shell=True, cwd=cwd)
+            subprocess.check_call(cmd, shell=use_shell, cwd=cwd, env=run_env)
     except subprocess.CalledProcessError as e:
         if check:
             print_error(f"Command failed with exit code {e.returncode}")
@@ -161,7 +194,7 @@ def check_prereqs(args):
 
     # Check Docker Compose
     try:
-        run_command("docker compose version", capture=True)
+        run_command(("docker", "compose", "version"), capture=True)
         print_success("Docker Compose is installed")
     except (subprocess.CalledProcessError, FileNotFoundError, SystemExit) as e:
         print_error(f"Docker Compose is NOT installed or not accessible. ({e})")
@@ -169,7 +202,7 @@ def check_prereqs(args):
 
     # Check if docker daemon is running
     try:
-        run_command("docker info", capture=True)
+        run_command(("docker", "info"), capture=True)
         print_success("Docker Daemon is running")
     except (subprocess.CalledProcessError, FileNotFoundError, SystemExit) as e:
         print_error(f"Docker Daemon is NOT running. Please start Docker. ({e})")
@@ -189,7 +222,7 @@ def _image_tag(name):
 
 def _image_exists(tag):
     """Check if a Docker image exists locally."""
-    r = subprocess.run(f"docker image inspect {tag}", shell=True,
+    r = subprocess.run(("docker", "image", "inspect", tag),
                        capture_output=True, text=True)
     return r.returncode == 0
 
@@ -267,14 +300,13 @@ def _build_single(dockerfile, image_name, parent_name, no_cache=False, base_imag
         print_error(f"Layer file not found: {dockerfile}")
         sys.exit(1)
 
-    build_args = ""
+    cb = CommandBuilder("docker", "build").flag("--no-cache", when=no_cache)
     if base_image_override:
-        build_args = f"--build-arg BASE_IMAGE={base_image_override}"
+        cb.opt("--build-arg", f"BASE_IMAGE={base_image_override}")
     elif parent_name is not None:
-        build_args = f"--build-arg BASE_IMAGE={_image_tag(parent_name)}"
-
-    no_cache_flag = " --no-cache" if no_cache else ""
-    run_command(f"docker build{no_cache_flag} {build_args} -f {dockerfile} -t {tag} {SANDBOX_DIR}")
+        cb.opt("--build-arg", f"BASE_IMAGE={_image_tag(parent_name)}")
+    cb.opt("-f", dockerfile).opt("-t", tag).positional(SANDBOX_DIR)
+    run_command(cb.build())
 
 def build_layered(tag, no_cache=False, base_image=None):
     """Build a final image using FROM-chained layers, skipping cached intermediates.
@@ -535,7 +567,7 @@ def up(args):
 
     # Generate compose file for this tag
     tag_compose, service_name = generate_compose_for_tag(target)
-    compose_files = f"-f {tag_compose}"
+    compose_files = [tag_compose]
 
     # Custom Image Support
     if args.image:
@@ -546,7 +578,7 @@ def up(args):
     # Git Context Sharing
     git_compose = generate_git_compose(username, target)
     if git_compose:
-        compose_files += f" -f {git_compose}"
+        compose_files.append(git_compose)
         print_info("Git Context Sharing Enabled")
 
     password = args.password
@@ -555,8 +587,8 @@ def up(args):
     if args.cpus or args.memory:
         resource_compose = generate_resource_compose(args.cpus, args.memory, target)
         if resource_compose:
-             compose_files += f" -f {resource_compose}"
-             print_info("Resource Limits Applied")
+            compose_files.append(resource_compose)
+            print_info("Resource Limits Applied")
 
     # Auto-Port Assignment Logic
     def is_flag_set(flags):
@@ -584,18 +616,35 @@ def up(args):
              print_warning("Default noVNC port 6901 is busy. Switching to ephemeral.")
              novnc_port = "0"
 
-    env_vars = f"SSH_HOST_PORT={ssh_port} KASM_PORT={kasm_port} VNC_PORT={vnc_port} NOVNC_PORT={novnc_port} HOST_UID={uid} HOST_GID={gid} HOST_USER={username} HOST_PASSWORD={password} VNC_PW={password}"
+    env_map = {
+        "SSH_HOST_PORT": ssh_port,
+        "KASM_PORT": kasm_port,
+        "VNC_PORT": vnc_port,
+        "NOVNC_PORT": novnc_port,
+        "HOST_UID": uid,
+        "HOST_GID": gid,
+        "HOST_USER": username,
+        "HOST_PASSWORD": password,
+        "VNC_PW": password,
+    }
 
     workspace_path = os.path.abspath(args.workspace) if args.workspace else os.path.abspath("workspace")
     os.makedirs(workspace_path, exist_ok=True)
-    env_vars += f" WORKSPACE_DIR={workspace_path}"
+    env_map["WORKSPACE_DIR"] = workspace_path
     print_info(f"Using Workspace: {workspace_path}")
 
     project_name = args.name
     print_info(f"Project Name: {project_name}")
 
+    def _compose_cmd(*action):
+        cb = CommandBuilder("docker", "compose", "-p", project_name)
+        for cf in compose_files:
+            cb.opt("-f", cf)
+        cb.positional(*action)
+        return cb.build()
+
     try:
-        run_command(f"{env_vars} docker compose -p {project_name} {compose_files} up -d {service_name}")
+        run_command(_compose_cmd("up", "-d", service_name), env=env_map)
 
         # Retrieve actual ports if they were ephemeral
         if ssh_port == "0" or kasm_port == "0" or vnc_port == "0" or novnc_port == "0":
@@ -603,7 +652,7 @@ def up(args):
 
             def get_port(service, internal):
                 try:
-                    out = run_command(f"docker compose -p {project_name} {compose_files} port {service} {internal}", capture=True)
+                    out = run_command(_compose_cmd("port", service, internal), capture=True)
                     if ":" in out:
                         return out.split(":")[-1]
                 except (subprocess.CalledProcessError, SystemExit) as e:
@@ -834,28 +883,38 @@ def sync_config(project_name, container_name, username, config_source="config"):
         for i in range(30): # Wait up to 30 seconds
             # Check if user exists inside container
             # We use check=False to avoid printing errors/exiting if user doesn't exist yet
-            out = run_command(f"docker exec {container_name} id -u {username}", capture=True, check=False)
+            out = run_command(("docker", "exec", container_name, "id", "-u", username), capture=True, check=False)
             if out and out.strip().isdigit():
                 user_ready = True
                 break
             time.sleep(1)
-        
+
         if not user_ready:
             print_warning(f"User '{username}' not found in container after 30s. Sync might fail.")
 
         target_dir = f"/home/{username}/.gemini"
-        
+
         # Ensure target directory exists
-        run_command(f"docker exec {container_name} mkdir -p {target_dir}")
-        
+        run_command(("docker", "exec", container_name, "mkdir", "-p", target_dir))
+
         # Copy config files
         # Use tar pipe instead of docker cp to allow exclusions of runtime state
         print_info("Transferring files (excluding runtime state)...")
-        exclude_flags = "--exclude='antigravity/daemon' --exclude='antigravity-browser-profile'"
-        run_command(f"tar -cf - -C {config_dir} {exclude_flags} . | docker exec -i {container_name} tar -xf - -C {target_dir}")
-        
+        # Genuine shell requirement: this is a pipe between two processes.
+        # All interpolated values are quoted with shlex.quote as defence-in-depth.
+        tar_cmd = (
+            f"tar -cf - -C {shlex.quote(config_dir)} "
+            f"--exclude='antigravity/daemon' --exclude='antigravity-browser-profile' . "
+            f"| docker exec -i {shlex.quote(container_name)} "
+            f"tar -xf - -C {shlex.quote(target_dir)}"
+        )
+        run_command(tar_cmd, shell=True)
+
         # Fix permissions (docker cp makes it root owned)
-        out = run_command(f"docker exec {container_name} chown -R {username}:{username} {target_dir}", capture=True, check=False)
+        out = run_command(
+            ("docker", "exec", container_name, "chown", "-R", f"{username}:{username}", target_dir),
+            capture=True, check=False,
+        )
         if out:
              print_warning(f"Failed to set permissions on {target_dir}: {out} (User mismatch?)")
         
@@ -872,7 +931,7 @@ def get_project_env(project_name):
         
         # Check if container exists (silently)
         # We use check=False so it doesn't print errors or exit if not found
-        check_res = run_command(f"docker inspect {container_name}", capture=True, check=False)
+        check_res = run_command(("docker", "inspect", container_name), capture=True, check=False)
         if check_res == "": # If capture=True and fails, run_command might return empty string or error msg depending on impl
              # Actually run_command implementation:
              # if capture: return result.stdout.strip()
@@ -894,13 +953,21 @@ def get_project_env(project_name):
         # To be safe and clean, let's just try to inspect and ignore failure.
         try:
             # We use a direct subprocess call for existence check to avoid run_command's noise
-            subprocess.check_call(f"docker inspect {container_name}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.check_call(
+                ("docker", "inspect", container_name),
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
         except subprocess.CalledProcessError:
             continue
-            
+
         # If we are here, container exists. Get Env.
         try:
-            out = run_command(f"docker inspect -f '{{{{range .Config.Env}}}}{{{{println .}}}}{{{{end}}}}' {container_name}", capture=True, check=False)
+            out = run_command(
+                ("docker", "inspect", "-f",
+                 "{{range .Config.Env}}{{println .}}{{end}}",
+                 container_name),
+                capture=True, check=False,
+            )
             if not out: continue
             
             env_map = {}
@@ -937,11 +1004,10 @@ def run_compose_cmd(args, action, check_existence=False):
             return
 
     # Recover Env
-    env_vars = get_project_env(project_name)
-    env_str = " ".join([f"{k}={v}" for k, v in env_vars.items()])
-    
+    env_map = get_project_env(project_name)
+
     print_header(f"{action.capitalize()}ing Sandbox ({project_name})")
-    
+
     # Find the compose file used by this project (check config dir first, then legacy)
     config_dir = "config"
     compose_files = []
@@ -950,13 +1016,14 @@ def run_compose_cmd(args, action, check_existence=False):
             if f.startswith("docker-compose.") and f.endswith(".yml") and not f.endswith(".git.yml") and not f.endswith(".resources.yml"):
                 compose_files.append(os.path.join(config_dir, f))
 
-    if compose_files:
-        compose_flags = " ".join(f"-f {cf}" for cf in compose_files)
-    else:
-        compose_flags = f"-f {COMPOSE_FILE}"
+    if not compose_files:
+        compose_files = [COMPOSE_FILE]
 
-    cmd = f"{env_str} docker compose -p {project_name} {compose_flags} {action}"
-    run_command(cmd)
+    cb = CommandBuilder("docker", "compose", "-p", project_name)
+    for cf in compose_files:
+        cb.opt("-f", cf)
+    cb.positional(action)
+    run_command(cb.build(), env=env_map)
     
     if action == "down":
         print_success("All containers removed.")
@@ -999,9 +1066,14 @@ def clean(args):
         for f in os.listdir(config_dir):
             if f.startswith("docker-compose.") and f.endswith(".yml") and not f.endswith(".git.yml") and not f.endswith(".resources.yml"):
                 compose_files.append(os.path.join(config_dir, f))
-    compose_flags = " ".join(f"-f {cf}" for cf in compose_files) if compose_files else f"-f {COMPOSE_FILE}"
-    cmd = f"docker compose -p {project_name} {compose_flags} down -v --rmi local --remove-orphans"
-    
+    if not compose_files:
+        compose_files = [COMPOSE_FILE]
+    cb = CommandBuilder("docker", "compose", "-p", project_name)
+    for cf in compose_files:
+        cb.opt("-f", cf)
+    cb.positional("down", "-v", "--rmi", "local", "--remove-orphans")
+    cmd = cb.build()
+
     if not args.force:
         print(f"{Colors.WARNING}CAUTION: This will destroy ALL data in volumes for project '{project_name}'.{Colors.ENDC}")
         if sys.stdin.isatty():
@@ -1017,7 +1089,11 @@ def get_managed_projects():
     """Found projects managed by this tool (have the specific label)."""
     try:
         # Use -a to find stopped containers as well
-        cmd = "docker ps -a --filter \"label=sanity.gravity.managed=true\" --format '{{.Label \"com.docker.compose.project\"}}'"
+        cmd = (
+            "docker", "ps", "-a",
+            "--filter", "label=sanity.gravity.managed=true",
+            "--format", '{{.Label "com.docker.compose.project"}}',
+        )
         output = run_command(cmd, capture=True, check=False)
         if not output:
             return []
@@ -1032,7 +1108,11 @@ def get_legacy_projects():
         # 1. Find ALL projects that look like ours (based on service names)
         # We look for containers with label com.docker.compose.service in [core, kasm, vnc]
         # AND include stopped containers (-a)
-        cmd = "docker ps -a --format '{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.service\"}}'"
+        cmd = (
+            "docker", "ps", "-a",
+            "--format",
+            '{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.service"}}',
+        )
         output = run_command(cmd, capture=True, check=False)
         
         candidates = set()
@@ -1107,7 +1187,11 @@ def upgrade(args):
             
             # Find running services for this project
             # Use -a to find stopped containers too
-            cmd = f"docker ps -a --filter \"label=com.docker.compose.project={p}\" --format '{{{{.Label \"com.docker.compose.service\"}}}}'"
+            cmd = (
+                "docker", "ps", "-a",
+                "--filter", f"label=com.docker.compose.project={p}",
+                "--format", '{{.Label "com.docker.compose.service"}}',
+            )
             services_out = run_command(cmd, capture=True, check=False)
             if not services_out:
                 print_error(f"Could not determine services for {p}. Skipping.")
@@ -1145,39 +1229,44 @@ def upgrade(args):
                 if p != "sanity-gravity" or is_port_in_use(6901):
                     env_vars["NOVNC_PORT"] = "0"
 
-            env_str = " ".join([f"{k}={v}" for k, v in env_vars.items()])
-
             for s in services:
                 if s in VALID_TAGS:
                     print_info(f"Recreating {p} ({s})...")
-                    
+
                     container_name = f"{p}-{s}-1"
-                    
+
                     # Prepare Compose Files
-                    compose_files = f"-f {COMPOSE_FILE}"
+                    compose_files = [COMPOSE_FILE]
 
                     # Git Context
                     git_compose = generate_git_compose(username)
                     if git_compose:
-                        compose_files += f" -f {git_compose}"
-                    
+                        compose_files.append(git_compose)
+
                     # CRITICAL: Remove the old container to avoid name conflicts
                     # This is especially important if the old container was created via 'docker run'
                     # or is in a state where Compose can't atomic swap it.
                     # We already have the env vars, so it's safe to destroy the old vessel.
                     try:
                         # Find container id for this specific service
-                        cmd_find = f"docker ps -a -q --filter \"label=com.docker.compose.project={p}\" --filter \"label=com.docker.compose.service={s}\""
+                        cmd_find = (
+                            "docker", "ps", "-a", "-q",
+                            "--filter", f"label=com.docker.compose.project={p}",
+                            "--filter", f"label=com.docker.compose.service={s}",
+                        )
                         cid = run_command(cmd_find, capture=True, check=False)
                         if cid:
-                             run_command(f"docker rm -f {cid}", check=False)
+                            run_command(("docker", "rm", "-f", cid), check=False)
                     except subprocess.CalledProcessError:
                         pass # Ignore errors here, compose execution is the real test
 
                     # Execute Recreate
                     # We use --force-recreate to ensure labels are applied
-                    cmd = f"{env_str} docker compose -p {p} {compose_files} up -d --force-recreate {s}"
-                    run_command(cmd)
+                    cb = CommandBuilder("docker", "compose", "-p", p)
+                    for cf in compose_files:
+                        cb.opt("-f", cf)
+                    cb.positional("up", "-d", "--force-recreate", s)
+                    run_command(cb.build(), env=env_vars)
         except Exception as e:
             print_error(f"Failed to upgrade {p}: {e}")
                  
@@ -1222,7 +1311,10 @@ def sync_config_cmd(args):
                 container_name = f"{project}-{v}-1"
                 # Check if running
                 try:
-                    out = run_command(f"docker inspect -f '{{{{.State.Running}}}}' {container_name}", capture=True, check=False)
+                    out = run_command(
+                        ("docker", "inspect", "-f", "{{.State.Running}}", container_name),
+                        capture=True, check=False,
+                    )
                     if out == "true":
                         target_variant = v
                         break
@@ -1266,7 +1358,7 @@ def shell_cmd(args):
     for v in VALID_TAGS:
         cname = f"{project_name}-{v}-1"
         try:
-             out = run_command(f"docker inspect -f '{{{{.State.Running}}}}' {cname}", capture=True, check=False)
+             out = run_command(("docker", "inspect", "-f", "{{.State.Running}}", cname), capture=True, check=False)
              if out == "true":
                  target_variant = v
                  container_name = cname
@@ -1293,15 +1385,16 @@ def shell_cmd(args):
         shell = args.use
         fallback_to_bash = False
 
-    cmd = f"docker exec -it -u {user} {container_name} {shell}"
+    cmd = ("docker", "exec", "-it", "-u", user, container_name, shell)
     try:
-        # Use simple os.system or subprocess.call to ensure TTY builds correctly
-        subprocess.check_call(cmd, shell=True)
+        # subprocess with argv list still allocates a TTY correctly when stdin/stdout
+        # are inherited; shell=True is not needed.
+        subprocess.check_call(cmd)
     except subprocess.CalledProcessError:
         if fallback_to_bash:
             print_warning(f"{shell} failed, falling back to bash...")
-            cmd = f"docker exec -it -u {user} {container_name} bash"
-            subprocess.call(cmd, shell=True)
+            cmd = ("docker", "exec", "-it", "-u", user, container_name, "bash")
+            subprocess.call(cmd)
         else:
             print_error(f"{shell} failed. Specify the --use parameter to pick another shell.")
 
@@ -1324,7 +1417,7 @@ def open_cmd(args):
     for v in VALID_TAGS:
         cname = f"{project_name}-{v}-1"
         try:
-             out = run_command(f"docker inspect -f '{{{{.State.Running}}}}' {cname}", capture=True, check=False)
+             out = run_command(("docker", "inspect", "-f", "{{.State.Running}}", cname), capture=True, check=False)
              if out == "true":
                  target_variant = v
                  container_name = cname
@@ -1347,13 +1440,16 @@ def open_cmd(args):
     # The container itself thinks it's 0? Yes.
     # So we must query `docker port` to find the real host port.
     
-    compose_file_arg = f"-f {COMPOSE_FILE}"
     # Just using base file usually works for port query if project name matches
 
     def resolve_port(service, internal):
         try:
             # We must use project name
-            out = run_command(f"docker compose -p {project_name} {compose_file_arg} port {service} {internal}", capture=True, check=False)
+            out = run_command(
+                ("docker", "compose", "-p", project_name, "-f", COMPOSE_FILE,
+                 "port", service, str(internal)),
+                capture=True, check=False,
+            )
             if ":" in out:
                 return out.split(":")[-1]
         except subprocess.CalledProcessError as e:
@@ -1413,7 +1509,7 @@ def snapshot_cmd(args):
     if variant:
         target_variant = variant
         container_name = f"{project_name}-{variant}-1"
-        out = run_command(f"docker inspect {container_name}", capture=True, check=False)
+        out = run_command(("docker", "inspect", container_name), capture=True, check=False)
         if out and out.strip() != "[]":
              container_id = container_name
         else:
@@ -1424,7 +1520,7 @@ def snapshot_cmd(args):
         found_variants = []
         for v in VALID_TAGS:
             cname = f"{project_name}-{v}-1"
-            out = run_command(f"docker inspect {cname}", capture=True, check=False)
+            out = run_command(("docker", "inspect", cname), capture=True, check=False)
             if out and out.strip() != "[]":
                 found_variants.append(v)
         
@@ -1458,7 +1554,7 @@ def snapshot_cmd(args):
     try:
         # Commit the container
         # We pause the container by default (docker commit default behavior)
-        run_command(f"docker commit {container_id} {tag}")
+        run_command(("docker", "commit", container_id, tag))
         print_success(f"Snapshot created: {tag}")
         print(f"\n{Colors.OKBLUE}To use this snapshot:{Colors.ENDC}")
         print(f"  ./sanity-cli up -v {target_variant} --name new-env --image {tag}")
@@ -1501,7 +1597,10 @@ def status(args):
             # Let's try 'docker ps' filtered by project for a more robust generic view if compose ps fails,
             # but 'docker compose ps' is prettier.
             
-            output = run_command(f"docker compose -p {project} -f {COMPOSE_FILE} ps -a", capture=True, check=False)
+            output = run_command(
+                ("docker", "compose", "-p", project, "-f", COMPOSE_FILE, "ps", "-a"),
+                capture=True, check=False,
+            )
             if output:
                 print(output)
             else:
@@ -1670,7 +1769,7 @@ def ide_cmd(args):
     for v in VALID_TAGS:
         cname = f"{project_name}-{v}-1"
         try:
-             out = run_command(f"docker inspect -f '{{{{.State.Running}}}}' {cname}", capture=True, check=False)
+             out = run_command(("docker", "inspect", "-f", "{{.State.Running}}", cname), capture=True, check=False)
              if out == "true":
                  target_variant = v
                  container_name = cname
@@ -1692,22 +1791,24 @@ def ide_cmd(args):
     cli_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli")
     cleanup_src = os.path.join(base_dir, "sandbox", "rootfs", "usr", "local", "bin", "chrome-cleanup.sh")
     
-    inject_cmd_1 = f"docker cp {cli_src} {container_name}:/usr/local/bin/gravity-cli"
-    inject_cmd_1_b = f"docker cp {cleanup_src} {container_name}:/usr/local/bin/chrome-cleanup.sh"
-    inject_cmd_2 = f"docker exec -u root {container_name} chmod +x /usr/local/bin/gravity-cli /usr/local/bin/chrome-cleanup.sh"
-    
+    inject_cmd_1 = ("docker", "cp", cli_src, f"{container_name}:/usr/local/bin/gravity-cli")
+    inject_cmd_1_b = ("docker", "cp", cleanup_src, f"{container_name}:/usr/local/bin/chrome-cleanup.sh")
+    inject_cmd_2 = ("docker", "exec", "-u", "root", container_name,
+                    "chmod", "+x", "/usr/local/bin/gravity-cli", "/usr/local/bin/chrome-cleanup.sh")
+
     try:
-        subprocess.check_call(inject_cmd_1, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.check_call(inject_cmd_1_b, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.check_call(inject_cmd_2, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.check_call(inject_cmd_1, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.check_call(inject_cmd_1_b, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.check_call(inject_cmd_2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
         print_error("Failed to hot-inject gravity-cli. Container might be highly incompatible.")
         sys.exit(1)
 
     # Execute gravity-cli as root inside the container
-    cmd = f"docker exec -it -u root {container_name} /usr/local/bin/gravity-cli {subcommand}"
+    cmd = ("docker", "exec", "-it", "-u", "root", container_name,
+           "/usr/local/bin/gravity-cli", subcommand)
     try:
-        subprocess.check_call(cmd, shell=True)
+        subprocess.check_call(cmd)
     except subprocess.CalledProcessError:
         sys.exit(1)
 

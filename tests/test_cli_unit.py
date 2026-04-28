@@ -205,20 +205,21 @@ class TestConfigSync:
 
     def test_sync_config_non_interactive(self, mock_env):
         mock_exists, _, _, mock_run, _ = mock_env
-        
+
         # Simulate config dir missing
         mock_exists.side_effect = lambda p: p != "config"
-        
+
         # Simulate non-interactive TTY
         with patch("sys.stdin.isatty", return_value=False):
             sanity_cli.sync_config("test-proj", "test-container", "user")
-            
+
             # Should NOT call input
             # Should NOT call docker cp (since it skips)
             # Verify no docker cp command was run
             for call_args in mock_run.call_args_list:
                 cmd = call_args[0][0]
-                assert "docker cp" not in cmd
+                cmd_str = " ".join(cmd) if isinstance(cmd, (list, tuple)) else cmd
+                assert "docker cp" not in cmd_str
 
     def test_sync_config_interactive_copy(self, mock_env):
         mock_exists, mock_makedirs, mock_copy, mock_run, _ = mock_env
@@ -271,15 +272,19 @@ class TestConfigSync:
              patch("builtins.print"):
              
             sanity_cli.sync_config("test-proj", "test-container", "user")
-            
+
             # Verify files copied from host
             assert mock_copy.call_count >= 2
-            
+
             # Verify docker commands (mkdir and tar)
-            # We expect: mkdir -p ... and tar ... | docker exec -i ...
-            docker_cmds = [args[0][0] for args in mock_run.call_args_list]
+            # mkdir is now an argv tuple; tar is a shell string (genuine pipe).
+            def _as_str(cmd):
+                return " ".join(cmd) if isinstance(cmd, (list, tuple)) else cmd
+            docker_cmds = [_as_str(args[0][0]) for args in mock_run.call_args_list]
             assert any("tar -cf -" in cmd for cmd in docker_cmds)
-            assert any("docker exec -i test-container tar -xf -" in cmd for cmd in docker_cmds)
+            assert any("docker exec -i 'test-container' tar -xf -" in cmd or
+                       "docker exec -i test-container tar -xf -" in cmd
+                       for cmd in docker_cmds)
 
     def test_sync_config_safe_simulation(self):
         """Test sync_config with a custom source directory (simulation)."""
@@ -298,20 +303,23 @@ class TestConfigSync:
                 
                 # Call sync_config with the temp dir as source
                 sanity_cli.sync_config("safe-proj", "safe-container", "user", config_source=temp_config_dir)
-                
+
                 # Check that tar command was called with the temp dir
-                docker_cmds = [args[0][0] for args in mock_run.call_args_list]
-    
-                # We expect: tar -cf - -C {temp_config_dir} ...
-                expected_tar_part = f"tar -cf - -C {temp_config_dir}"
-    
+                def _as_str(cmd):
+                    return " ".join(cmd) if isinstance(cmd, (list, tuple)) else cmd
+                docker_cmds = [_as_str(args[0][0]) for args in mock_run.call_args_list]
+
+                # tar pipe is a shell string with shlex.quote'd values
+                import shlex as _shlex
+                expected_tar_part = f"tar -cf - -C {_shlex.quote(temp_config_dir)}"
+
                 # Filter commands that are tar commands
                 tar_commands = [cmd for cmd in docker_cmds if "tar -cf -" in cmd]
-    
+
                 assert len(tar_commands) > 0, "No tar sync command found"
                 assert any(expected_tar_part in cmd for cmd in tar_commands)
-                
-                # Also verify mkdir and chown calls
+
+                # mkdir/chown are argv tuples; their flat string form contains these substrings.
                 assert any("mkdir -p /home/user/.gemini" in cmd for cmd in docker_cmds)
                 assert any("chown -R user:user /home/user/.gemini" in cmd for cmd in docker_cmds)
 
@@ -350,9 +358,10 @@ class TestRunResourceArgs:
         mock_gen_res.assert_called_with("1.5", "2G", "ag-xfce-ssh")
         
         # Verify docker compose command includes the new file
-        # We need to check all calls to run_command
-        # Look for the one that has 'up -d'
-        up_calls = [args[0][0] for args in mock_run.call_args_list if "up -d" in args[0][0]]
+        # We need to check all calls to run_command. Commands are now argv tuples.
+        def _flat(c):
+            return " ".join(c) if isinstance(c, (list, tuple)) else c
+        up_calls = [_flat(args[0][0]) for args in mock_run.call_args_list if "up -d" in _flat(args[0][0])]
         assert len(up_calls) > 0
         cmd = up_calls[0]
         assert "-f config/docker-compose.resources.yml" in cmd
@@ -374,8 +383,9 @@ class TestNewCommands:
             # Check if docker exec was called
             # It finds the first running container from VALID_TAGS (ag-xfce-ssh)
             # developer is default user, zsh is default shell
-            expected_cmd = "docker exec -it -u developer sanity-gravity-ag-xfce-ssh-1 zsh"
-            mock_check_call.assert_called_with(expected_cmd, shell=True)
+            expected_cmd = ("docker", "exec", "-it", "-u", "developer",
+                            "sanity-gravity-ag-xfce-ssh-1", "zsh")
+            mock_check_call.assert_called_with(expected_cmd)
 
     @patch("sanity_cli.run_command")
     @patch("subprocess.check_call")
@@ -389,8 +399,9 @@ class TestNewCommands:
             sanity_cli.shell_cmd(args)
 
             # Verify user passed to docker exec
-            expected_cmd = "docker exec -it -u root sanity-gravity-ag-xfce-ssh-1 zsh"
-            mock_check_call.assert_called_with(expected_cmd, shell=True)
+            expected_cmd = ("docker", "exec", "-it", "-u", "root",
+                            "sanity-gravity-ag-xfce-ssh-1", "zsh")
+            mock_check_call.assert_called_with(expected_cmd)
 
     @patch("sanity_cli.run_command")
     @patch("subprocess.check_call")
@@ -403,8 +414,9 @@ class TestNewCommands:
         with patch("sanity_cli.get_active_projects", return_value=["sanity-gravity"]):
             sanity_cli.shell_cmd(args)
 
-            expected_cmd = "docker exec -it -u developer sanity-gravity-ag-xfce-ssh-1 bash"
-            mock_check_call.assert_called_with(expected_cmd, shell=True)
+            expected_cmd = ("docker", "exec", "-it", "-u", "developer",
+                            "sanity-gravity-ag-xfce-ssh-1", "bash")
+            mock_check_call.assert_called_with(expected_cmd)
 
     @patch("sanity_cli.run_command")
     @patch("subprocess.check_call")
@@ -420,10 +432,12 @@ class TestNewCommands:
             sanity_cli.shell_cmd(args)
 
             mock_check_call.assert_any_call(
-                "docker exec -it -u developer sanity-gravity-ag-xfce-ssh-1 zsh", shell=True
+                ("docker", "exec", "-it", "-u", "developer",
+                 "sanity-gravity-ag-xfce-ssh-1", "zsh")
             )
             mock_call.assert_called_once_with(
-                "docker exec -it -u developer sanity-gravity-ag-xfce-ssh-1 bash", shell=True
+                ("docker", "exec", "-it", "-u", "developer",
+                 "sanity-gravity-ag-xfce-ssh-1", "bash")
             )
 
     @patch("sanity_cli.run_command")
@@ -440,7 +454,8 @@ class TestNewCommands:
             sanity_cli.shell_cmd(args)
 
             mock_check_call.assert_any_call(
-                "docker exec -it -u developer sanity-gravity-ag-xfce-ssh-1 zsh", shell=True
+                ("docker", "exec", "-it", "-u", "developer",
+                 "sanity-gravity-ag-xfce-ssh-1", "zsh")
             )
             mock_call.assert_not_called()
 
@@ -448,9 +463,10 @@ class TestNewCommands:
     @patch("webbrowser.open")
     def test_open_command_kasm(self, mock_browser, mock_run):
          def run_side_effect(cmd, **kwargs):
-            if "ag-xfce-kasm-1" in cmd and "inspect" in cmd: return "true"
-            if "inspect" in cmd: return "false"
-            if "port ag-xfce-kasm 8444" in cmd: return "0.0.0.0:12345"
+            cmd_str = " ".join(cmd) if isinstance(cmd, (list, tuple)) else cmd
+            if "ag-xfce-kasm-1" in cmd_str and "inspect" in cmd_str: return "true"
+            if "inspect" in cmd_str: return "false"
+            if "port ag-xfce-kasm 8444" in cmd_str: return "0.0.0.0:12345"
             return ""
          mock_run.side_effect = run_side_effect
          
@@ -475,13 +491,16 @@ class TestSnapshot:
 
         # Verify docker inspect called
         # Verify docker commit called
+        def _flat(c):
+            return " ".join(c) if isinstance(c, (list, tuple)) else c
+        flat_cmds = [_flat(call_args[0][0]) for call_args in mock_run.call_args_list]
 
         # We expect inspect to verify container exists
-        inspect_call = [args[0][0] for args in mock_run.call_args_list if "docker inspect" in args[0][0]]
+        inspect_call = [c for c in flat_cmds if "docker inspect" in c]
         assert len(inspect_call) > 0
 
         # Check commit
-        commit_calls = [args[0][0] for args in mock_run.call_args_list if "docker commit" in args[0][0]]
+        commit_calls = [c for c in flat_cmds if "docker commit" in c]
         assert len(commit_calls) > 0
 
         expected_commit = "docker commit my-proj-ag-xfce-ssh-1 my-image:v1"
