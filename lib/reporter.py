@@ -25,6 +25,9 @@ from typing import IO, Iterable, Protocol
 
 from events import (  # type: ignore[import-not-found]
     AccessInfo,
+    ActionFailed,
+    ActionFinished,
+    ActionStarted,
     CacheHit,
     CommandIssued,
     ErrorEvent,
@@ -36,6 +39,7 @@ from events import (  # type: ignore[import-not-found]
     Prompt,
     Success,
     Warning,
+    WouldExecute,
 )
 
 
@@ -97,6 +101,42 @@ class AnsiSink:
             # rendering to the call site, but emit a hint here so a
             # passive Ansi observer still sees the question.
             out.write(f"{_BOLD}{event.question}{_ENDC}")
+        elif isinstance(event, ActionStarted):
+            argv = event.argv
+            if isinstance(argv, (list, tuple)):
+                import shlex
+
+                rendered = " ".join(shlex.quote(str(p)) for p in argv)
+            else:
+                rendered = str(argv)
+            out.write(f"{_OKBLUE}$ {rendered}{_ENDC}\n")
+        elif isinstance(event, ActionFinished):
+            # Quiet on success: the ActionStarted line is enough; render
+            # only failures as conspicuous lines (handled below).
+            if event.exit_code != 0:
+                out.write(
+                    f"{_FAIL}✘ {event.action_type} exited {event.exit_code}{_ENDC}\n"
+                )
+        elif isinstance(event, ActionFailed):
+            out.write(
+                f"{_FAIL}✘ [{event.phase or 'action'}]      FAILED{_ENDC}\n"
+            )
+            out.write(f"    action:  {event.action_type}({event.explain_str})\n")
+            argv = event.argv
+            if isinstance(argv, (list, tuple)):
+                import shlex
+
+                cmd = " ".join(shlex.quote(str(p)) for p in argv)
+            else:
+                cmd = str(argv)
+            out.write(f"    cmd:     {cmd}\n")
+            out.write(f"    exit:    {event.exit_code}\n")
+            if event.stderr_tail:
+                out.write(f"    stderr:  {event.stderr_tail}\n")
+            if event.hint:
+                out.write(f"\n{_WARNING}Hint: {event.hint}{_ENDC}\n")
+        elif isinstance(event, WouldExecute):
+            out.write(f"{_OKCYAN}» would: {event.explain_str}{_ENDC}\n")
         elif isinstance(event, (CacheHit, LayerBuilding, LayerBuilt)):
             # These are domain-specific narrations; the legacy code
             # surfaced them via print_info / print_success. We keep the

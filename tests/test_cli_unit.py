@@ -336,35 +336,56 @@ class TestRunResourceArgs:
         mock_instance.is_enabled.return_value = False
         # Setup mocks
         mock_gen_res.return_value = "config/docker-compose.resources.yml"
-        
-        args = MagicMock()
-        args.variant = "ag-xfce-ssh"
-        args.cpus = "1.5"
-        args.memory = "2G"
-        # set other defaults
-        args.skip_check = True
-        args.ssh_port = "2222"
-        args.kasm_port = "8444"
-        args.vnc_port = "5901"
-        args.novnc_port = "6901"
-        args.workspace = None
-        args.name = "sanity-gravity"
-        args.password = "pass"
-        args.image = None
 
-        sanity_cli.up(args)
+        # Build a real Reporter so phase ticks have somewhere to land.
+        from reporter import Reporter
+        args = argparse.Namespace(
+            variant="ag-xfce-ssh",
+            cpus="1.5",
+            memory="2G",
+            skip_check=True,
+            ssh_port="2222",
+            kasm_port="8444",
+            vnc_port="5901",
+            novnc_port="6901",
+            workspace=None,
+            name="sanity-gravity",
+            password="pass",
+            image=None,
+            dry_run=True,  # PR #5: dry_run captures the planned Action.
+            reporter=Reporter(sinks=[], run_id="t"),
+        )
+
+        # Capture the planned action by intercepting Executor.drain.
+        from executor import Executor as _Exec
+        captured_actions = []
+        orig_drain = _Exec.drain
+
+        def _capture(self, actions, *, phase=None):
+            for a in actions:
+                captured_actions.append((phase, a))
+            return orig_drain(self, actions, phase=phase)
+
+        with patch.object(_Exec, "drain", _capture):
+            try:
+                sanity_cli.up(args)
+            except SystemExit:
+                pass
 
         # Verify generate_resource_compose called
         mock_gen_res.assert_called_with("1.5", "2G", "ag-xfce-ssh")
-        
-        # Verify docker compose command includes the new file
-        # We need to check all calls to run_command. Commands are now argv tuples.
-        def _flat(c):
-            return " ".join(c) if isinstance(c, (list, tuple)) else c
-        up_calls = [_flat(args[0][0]) for args in mock_run.call_args_list if "up -d" in _flat(args[0][0])]
-        assert len(up_calls) > 0
-        cmd = up_calls[0]
-        assert "-f config/docker-compose.resources.yml" in cmd
+
+        # PR #5: ``docker compose up`` is now an Action, captured via
+        # the Executor. Look for the RunSubprocess containing "up -d".
+        from actions import RunSubprocess
+        up_actions = [
+            a for _, a in captured_actions
+            if isinstance(a, RunSubprocess)
+            and "up" in a.argv and "-d" in a.argv
+        ]
+        assert len(up_actions) > 0
+        argv = up_actions[0].argv
+        assert "config/docker-compose.resources.yml" in argv
 
 class TestNewCommands:
     """Tests for shell and open commands."""

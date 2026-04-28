@@ -128,3 +128,40 @@ class Prompt(Event):
     """
 
     question: str = ""
+
+
+@dataclass(frozen=True)
+class ActionStarted(Event):
+    """An :class:`~actions.Action` is about to execute."""
+
+    action_type: str = ""
+    argv: tuple[str, ...] | str = ()
+
+
+@dataclass(frozen=True)
+class ActionFinished(Event):
+    """An Action finished. ``exit_code == 0`` means success."""
+
+    action_type: str = ""
+    exit_code: int = 0
+    duration_ms: int = 0
+
+
+@dataclass(frozen=True)
+class ActionFailed(Event):
+    """An Action returned non-zero. Carries the structured failure context."""
+
+    action_type: str = ""
+    argv: tuple[str, ...] | str = ()
+    exit_code: int = 0
+    stderr_tail: str = ""
+    hint: str | None = None
+    explain_str: str = ""
+
+
+@dataclass(frozen=True)
+class WouldExecute(Event):
+    """Emitted under ``--dry-run`` in lieu of running the Action."""
+
+    explain_str: str = ""
+    action_type: str = ""

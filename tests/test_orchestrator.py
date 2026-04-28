@@ -158,11 +158,18 @@ def test_full_up_flow_invokes_expected_deps_in_order():
     ctx = _make_ctx(deps)
     UpOrchestrator(bus, ctx.reporter).run(ctx)
 
+    # PR #5: ``docker compose up`` is now enqueued as an Action rather
+    # than calling ``run_command`` directly. ``sync_config`` still runs
+    # eagerly (its tar-pipe + interactive prompts haven't migrated).
     names = [c[0] for c in calls]
-    # Validation -> compose generation -> docker up -> sync_config
     assert names.index("validate_project_name") < names.index("generate_compose_for_tag")
-    assert names.index("generate_compose_for_tag") < names.index("run_command")
-    assert names.index("run_command") < names.index("sync_config")
+    assert "sync_config" in names
+    # Exactly one action should have been queued: the compose-up.
+    assert len(ctx.actions) == 1
+    from actions import RunSubprocess  # noqa: PLC0415
+
+    assert isinstance(ctx.actions[0], RunSubprocess)
+    assert "up" in ctx.actions[0].argv and "-d" in ctx.actions[0].argv
 
 
 def test_compose_files_collected_from_compose_phase():

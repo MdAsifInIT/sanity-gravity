@@ -10,6 +10,7 @@ import shutil
 import time
 import socket
 import webbrowser
+from pathlib import Path
 
 # Configuration
 COMPOSE_FILE = "docker-compose.yml"
@@ -115,6 +116,13 @@ except ImportError:  # pragma: no cover - lib is shipped with the repo
     UpContext = None
     UpOrchestrator = None
     register_builtin_up_hooks = None
+
+try:
+    from actions import ActionFailedError
+    from executor import build_default_executor
+except ImportError:  # pragma: no cover - lib is shipped with the repo
+    ActionFailedError = None
+    build_default_executor = None
 
 # ANSI Colors
 class Colors:
@@ -680,6 +688,7 @@ def up(args):
         requested_ports=requested_ports,
         deps=deps,
         reporter=getattr(args, "reporter", None) or _reporter,
+        dry_run=bool(getattr(args, "dry_run", False)),
     )
     # Stash CPU/memory requests on env with sentinel keys; the resource
     # compose hook reads them and they're stripped before subprocess.
@@ -691,18 +700,55 @@ def up(args):
     bus = EventBus()
     register_builtin_up_hooks(bus)
 
+    # Build the Executor: in dry-run / explain mode this short-circuits
+    # all side effects into ``WouldExecute`` events. The executor's
+    # ``run_dir`` matches the FileSink's so events.jsonl + actions.jsonl
+    # land next to each other.
+    dry_run = bool(getattr(args, "dry_run", False))
+    executor = None
+    if build_default_executor is not None:
+        executor = build_default_executor(ctx.reporter, dry_run=dry_run)
+        atexit.register(executor.close)
+
     try:
-        UpOrchestrator(bus, ctx.reporter).run(ctx)
+        UpOrchestrator(bus, ctx.reporter, executor=executor).run(ctx)
     except ValueError as e:
         # Validation failures inside hooks (project / username) surface
         # here; preserve the legacy ``print_error → sys.exit(1)`` UX.
         print_error(str(e))
         sys.exit(1)
+    except ActionFailedError as e:
+        # Structured failure was already emitted via the reporter (see
+        # executor.run); add a footer pointing at the run-dir, then exit
+        # with the action's exit code.
+        run_dir = (Path.home() / ".cache" / "sanity-gravity" / "runs"
+                   / ctx.reporter.run_id)
+        if _reporter is not None:
+            _reporter.info(f"Detailed run state at: {run_dir}")
+        sys.exit(e.result.exit_code or 1)
     except SystemExit:
         # ``run_command`` calls ``sys.exit(returncode)`` on failure to
         # match the legacy behaviour. Propagate so the CLI exit status
         # is preserved.
         raise
+
+    # Persist a copy of the compose file(s) for postmortem.
+    if executor is not None and not dry_run and ctx.compose_files:
+        try:
+            run_dir = (Path.home() / ".cache" / "sanity-gravity" / "runs"
+                       / ctx.reporter.run_id)
+            run_dir.mkdir(parents=True, exist_ok=True)
+            primary = ctx.compose_files[0]
+            if os.path.exists(primary):
+                shutil.copy2(primary, run_dir / "compose.yml")
+        except OSError:
+            pass  # best-effort
+
+
+def explain_up(args):
+    """Thin alias for ``--dry-run up``: plan the up flow without executing."""
+    args.dry_run = True
+    return up(args)
 
 
 def _validate_username_with_hint(username):
@@ -1826,6 +1872,14 @@ def main():
             "(default). 'json' = JSONL narration on stderr; data still on stdout."
         ),
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Plan side effects without executing them. Each Action is "
+            "rendered as a 'would: ...' line; no Docker / FS calls are made."
+        ),
+    )
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
     # Check Command
@@ -1970,6 +2024,16 @@ def main():
     parser_test = subparsers.add_parser("test", help="Run test suite")
     parser_test.add_argument("target", nargs="?", help="Specific test target (e.g., tests/test_core.py)")
     parser_test.set_defaults(func=test_suite)
+
+    # Explain Command — same as ``--dry-run up`` for now (PR #5).
+    parser_explain = subparsers.add_parser(
+        "explain",
+        help="Print the planned action list without executing (alias of --dry-run)",
+    )
+    explain_subs = parser_explain.add_subparsers(dest="explain_target", required=True)
+    parser_explain_up = explain_subs.add_parser("up", help="Explain an 'up' invocation")
+    add_up_args(parser_explain_up)
+    parser_explain_up.set_defaults(func=explain_up)
 
 
 

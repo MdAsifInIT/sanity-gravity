@@ -11,6 +11,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from actions import RunSubprocess  # type: ignore[import-not-found]
 from command import CommandBuilder  # type: ignore[import-not-found]
 from eventbus import EventBus  # type: ignore[import-not-found]
 from phase import Phase  # type: ignore[import-not-found]
@@ -106,15 +107,26 @@ def _compose_cmd(ctx, *action: str) -> tuple[str, ...]:
 
 
 def docker_compose_up(ctx) -> None:
-    """UP_DOCKER/100: bring the stack up."""
+    """UP_DOCKER/100: enqueue the ``compose up`` action."""
     env = {k: v for k, v in ctx.env.items() if not k.startswith("_")}
-    ctx.deps.run_command(_compose_cmd(ctx, "up", "-d", ctx.service_name), env=env)
+    ctx.actions.append(RunSubprocess(
+        argv=_compose_cmd(ctx, "up", "-d", ctx.service_name),
+        env=env,
+    ))
 
 
 def resolve_ephemeral(ctx) -> None:
-    """UP_DOCKER/200: replace ``"0"`` ports with what Docker actually bound."""
+    """UP_DOCKER/200: replace ``"0"`` ports with what Docker actually bound.
+
+    Direct ``run_command`` callable on purpose: the hook needs the
+    captured stdout to feed back into ``ctx.resolved_ports``. Wrapping
+    this as a typed Action with result piping is a future refinement.
+    """
     rp = ctx.resolved_ports
     if "0" not in (rp.get("ssh"), rp.get("kasm"), rp.get("vnc"), rp.get("novnc")):
+        return
+    if getattr(ctx, "dry_run", False):
+        ctx.reporter.info("Resolving ephemeral ports... (skipped in dry-run)")
         return
 
     ctx.reporter.info("Resolving ephemeral ports...")
@@ -141,7 +153,17 @@ def resolve_ephemeral(ctx) -> None:
 
 
 def sync_config_hook(ctx) -> None:
-    """UP_PROVISION: push the host's ``./config/`` into the container."""
+    """UP_PROVISION: push the host's ``./config/`` into the container.
+
+    Direct ``deps.sync_config`` callable for now — the function mixes
+    interactive prompts, file copies, and a tar pipe that need shell.
+    Splitting into Actions is tracked in PR #6 backlog.
+    """
+    if getattr(ctx, "dry_run", False):
+        ctx.reporter.info(
+            f"» would: sync host config → {ctx.container_name} (skipped in dry-run)"
+        )
+        return
     ctx.deps.sync_config(ctx.project, ctx.container_name, ctx.host_user)
 
 
