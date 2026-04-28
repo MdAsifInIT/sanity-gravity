@@ -21,10 +21,17 @@ class Phase(StrEnum):
     UP_PROVISION = "up.provision"
     UP_ANNOUNCE = "up.announce"
 
-    # forward-declared for future PRs (not yet on the kernel)
+    # build verb (active in PR #7b)
     BUILD_PLAN = "build.plan"
     BUILD_LAYER = "build.layer"
     BUILD_DONE = "build.done"
+
+    # lifecycle (down/stop/start/restart/clean) verbs (active in PR #7b)
     DOWN_BEFORE = "down.before"
     DOWN_DOCKER = "down.docker"
     DOWN_AFTER = "down.after"
+
+    # snapshot verb (active in PR #7b)
+    SNAPSHOT_PLAN = "snapshot.plan"
+    SNAPSHOT_DOCKER = "snapshot.docker"
+    SNAPSHOT_DONE = "snapshot.done"

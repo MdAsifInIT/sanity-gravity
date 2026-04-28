@@ -9,12 +9,17 @@ from __future__ import annotations
 import argparse
 
 from sanity_gravity.cli.registry import DEFAULT_TAG
-from sanity_gravity.verbs.build import build, install
+from sanity_gravity.verbs.build import build, explain_build, install
 from sanity_gravity.verbs.check import check_prereqs
 from sanity_gravity.verbs.ide import ide_cmd
 from sanity_gravity.verbs.lifecycle import (
     clean,
     down,
+    explain_clean,
+    explain_down,
+    explain_restart,
+    explain_start,
+    explain_stop,
     restart,
     start,
     stop,
@@ -26,7 +31,7 @@ from sanity_gravity.verbs.proxy import (
     proxy_status_cmd,
 )
 from sanity_gravity.verbs.shell import shell_cmd
-from sanity_gravity.verbs.snapshot import snapshot_cmd
+from sanity_gravity.verbs.snapshot import explain_snapshot, snapshot_cmd
 from sanity_gravity.verbs.status import list_variants, plugins_list, status
 from sanity_gravity.verbs.sync import sync_config_cmd
 from sanity_gravity.verbs.test_suite import test_suite
@@ -304,5 +309,52 @@ def build_parser():
     )
     _add_up_args(p_explain_up)
     p_explain_up.set_defaults(func=explain_up)
+
+    # explain build
+    p_explain_build = explain_subs.add_parser(
+        "build", help="Explain a 'build' invocation",
+    )
+    p_explain_build.add_argument(
+        "variant", nargs="*",
+        help="Tag to build, e.g. ag-xfce-kasm (default: all)",
+        default=["all"],
+    )
+    p_explain_build.add_argument("--no-cache", action="store_true")
+    p_explain_build.add_argument(
+        "--layer", choices=["base", "desktop", "agent", "connector"],
+    )
+    p_explain_build.add_argument("--layer-target")
+    p_explain_build.add_argument(
+        "--list-intermediates", action="store_true",
+    )
+    p_explain_build.add_argument(
+        "--json", dest="json_output", action="store_true",
+    )
+    p_explain_build.set_defaults(func=explain_build)
+
+    # explain {down,stop,start,restart,clean}
+    for verb_name, verb_fn in (
+        ("down", explain_down),
+        ("stop", explain_stop),
+        ("start", explain_start),
+        ("restart", explain_restart),
+        ("clean", explain_clean),
+    ):
+        p_explain_v = explain_subs.add_parser(
+            verb_name, help=f"Explain a '{verb_name}' invocation",
+        )
+        p_explain_v.add_argument("--name", "-n", default="sanity-gravity")
+        if verb_name == "clean":
+            p_explain_v.add_argument("--force", "-f", action="store_true")
+        p_explain_v.set_defaults(func=verb_fn)
+
+    # explain snapshot
+    p_explain_snap = explain_subs.add_parser(
+        "snapshot", help="Explain a 'snapshot' invocation",
+    )
+    p_explain_snap.add_argument("--name", "-n", default="sanity-gravity")
+    p_explain_snap.add_argument("--variant", "-v", default=None)
+    p_explain_snap.add_argument("--tag", "-t", required=True)
+    p_explain_snap.set_defaults(func=explain_snapshot)
 
     return parser

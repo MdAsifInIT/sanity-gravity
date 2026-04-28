@@ -1,25 +1,35 @@
 """``down`` / ``stop`` / ``start`` / ``restart`` / ``clean`` verbs.
 
+The phase loop ``down.before → down.docker → down.after`` is published
+by :class:`Orchestrator`; per-phase behaviour lives in
+:mod:`lifecycle_hooks`. ``clean`` reuses the same phase sequence with a
+``CleanContext`` that adds a ``[y/N]`` prompt + extra docker-compose
+args (``-v --rmi local --remove-orphans``).
+
 Plus the project-discovery helpers (managed/legacy/active project lists)
 and ``get_project_env`` — shared with ``upgrade`` and ``sync_config``.
 """
 from __future__ import annotations
 
-import os
+import atexit
 import subprocess
-import sys
 
-from sanity_gravity.cli.colors import Colors
 from sanity_gravity.cli.io import (
-    print_error,
-    print_header,
-    print_info,
-    print_success,
+    get_reporter,
     print_warning,
     run_command,
 )
 from sanity_gravity.cli.registry import VALID_TAGS
-from sanity_gravity.core.command import CommandBuilder
+from sanity_gravity.core.eventbus import EventBus
+from sanity_gravity.core.orchestrator import (
+    CleanContext,
+    DownContext,
+    Orchestrator,
+    _DOWN_PHASES,
+)
+from sanity_gravity.effects.actions import ActionFailedError
+from sanity_gravity.effects.executor import build_default_executor
+from sanity_gravity.verbs.lifecycle_hooks import register_builtin_lifecycle_hooks
 
 
 COMPOSE_FILE = "docker-compose.yml"
@@ -114,107 +124,87 @@ def get_project_env(project_name):
     return {}
 
 
-def _project_compose_files():
-    """Find the compose files for a project (config/ first, legacy fallback)."""
-    config_dir = "config"
-    compose_files = []
-    if os.path.exists(config_dir):
-        for f in os.listdir(config_dir):
-            if (
-                f.startswith("docker-compose.")
-                and f.endswith(".yml")
-                and not f.endswith(".git.yml")
-                and not f.endswith(".resources.yml")
-            ):
-                compose_files.append(os.path.join(config_dir, f))
-
-    if not compose_files:
-        compose_files = [COMPOSE_FILE]
-    return compose_files
+def _run_lifecycle(ctx) -> None:
+    """Drive a DownContext / CleanContext through the kernel."""
+    bus = EventBus()
+    register_builtin_lifecycle_hooks(bus)
+    executor = build_default_executor(ctx.reporter, dry_run=ctx.dry_run)
+    atexit.register(executor.close)
+    try:
+        Orchestrator(bus, ctx.reporter, executor=executor).run(_DOWN_PHASES, ctx)
+    except ActionFailedError as e:
+        import sys as _sys
+        _sys.exit(e.result.exit_code or 1)
 
 
-def run_compose_cmd(args, action, check_existence=False):
-    """Helper to run docker compose commands with recovered environment."""
-    project_name = args.name
-
-    if check_existence:
-        active_projects = get_active_projects()
-        if project_name not in active_projects:
-            print_warning(f"Project '{project_name}' not found.")
-            if active_projects:
-                print(f"Active projects: {', '.join(active_projects)}")
-                print(
-                    f"{Colors.OKBLUE}Tip: Use --name <project> to specify a project.{Colors.ENDC}"
-                )
-            else:
-                print("No active Sanity-Gravity projects found.")
-            return
-
-    env_map = get_project_env(project_name)
-
-    print_header(f"{action.capitalize()}ing Sandbox ({project_name})")
-
-    compose_files = _project_compose_files()
-    cb = CommandBuilder("docker", "compose", "-p", project_name)
-    for cf in compose_files:
-        cb.opt("-f", cf)
-    cb.positional(action)
-    run_command(cb.build(), env=env_map)
-
-    if action == "down":
-        print_success("All containers removed.")
-    elif action == "stop":
-        print_success("Containers stopped (data preserved).")
-    elif action == "start":
-        print_success("Containers started.")
-    elif action == "restart":
-        print_success("Containers restarted.")
+def _make_down_ctx(args, action: str, *, check_existence: bool) -> DownContext:
+    reporter = getattr(args, "reporter", None) or get_reporter()
+    return DownContext(
+        project=args.name,
+        action=action,
+        reporter=reporter,
+        check_existence=check_existence,
+        dry_run=bool(getattr(args, "dry_run", False)),
+    )
 
 
 def down(args):
     """Stop and remove all sandbox containers (docker compose down)."""
-    run_compose_cmd(args, "down", check_existence=True)
+    _run_lifecycle(_make_down_ctx(args, "down", check_existence=True))
 
 
 def stop(args):
     """Stop sandbox containers without removing them (docker compose stop)."""
-    run_compose_cmd(args, "stop")
+    _run_lifecycle(_make_down_ctx(args, "stop", check_existence=False))
 
 
 def start(args):
     """Start existing stopped containers (docker compose start)."""
-    run_compose_cmd(args, "start")
+    _run_lifecycle(_make_down_ctx(args, "start", check_existence=False))
 
 
 def restart(args):
     """Restart sandbox containers (docker compose restart)."""
-    run_compose_cmd(args, "restart")
+    _run_lifecycle(_make_down_ctx(args, "restart", check_existence=False))
 
 
 def clean(args):
     """Deep cleanup: remove containers, volumes, local images and orphans."""
-    project_name = args.name
-    print_header(f"Deep Cleaning Sandbox ({project_name})")
+    reporter = getattr(args, "reporter", None) or get_reporter()
+    ctx = CleanContext(
+        project=args.name,
+        action="down",
+        reporter=reporter,
+        check_existence=False,
+        dry_run=bool(getattr(args, "dry_run", False)),
+        extra_action_args=("-v", "--rmi", "local", "--remove-orphans"),
+        force=bool(getattr(args, "force", False)),
+    )
+    _run_lifecycle(ctx)
 
-    compose_files = _project_compose_files()
-    cb = CommandBuilder("docker", "compose", "-p", project_name)
-    for cf in compose_files:
-        cb.opt("-f", cf)
-    cb.positional("down", "-v", "--rmi", "local", "--remove-orphans")
-    cmd = cb.build()
 
-    if not args.force:
-        print(
-            f"{Colors.WARNING}CAUTION: This will destroy ALL data in volumes "
-            f"for project '{project_name}'.{Colors.ENDC}"
-        )
-        if sys.stdin.isatty():
-            choice = input(
-                f"{Colors.BOLD}Proceed with deep clean? [y/N]: {Colors.ENDC}"
-            ).lower().strip()
-            if choice != 'y':
-                print_info("Cleanup cancelled.")
-                return
+# Explain aliases ------------------------------------------------------------
 
-    run_command(cmd)
-    print_success("Deep cleanup complete.")
+def explain_down(args):
+    args.dry_run = True
+    return down(args)
+
+
+def explain_stop(args):
+    args.dry_run = True
+    return stop(args)
+
+
+def explain_start(args):
+    args.dry_run = True
+    return start(args)
+
+
+def explain_restart(args):
+    args.dry_run = True
+    return restart(args)
+
+
+def explain_clean(args):
+    args.dry_run = True
+    return clean(args)

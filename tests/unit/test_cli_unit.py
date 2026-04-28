@@ -535,27 +535,56 @@ class TestNewCommands:
 class TestSnapshot:
     """Tests for snapshot and image features."""
 
-    @patch("sanity_gravity.verbs.snapshot.run_command")
+    @patch("sanity_gravity.verbs.snapshot_hooks.run_command")
     def test_snapshot_command(self, mock_run):
+        # docker inspect → return non-empty so the container is "found".
+        mock_run.return_value = '[{"Id": "abc"}]'
+
+        # Use a real-looking args; dry_run=True so the kernel emits a
+        # WouldExecute event for the docker commit (no real subprocess).
         args = MagicMock()
         args.name = "my-proj"
         args.variant = "ag-xfce-ssh"
         args.tag = "my-image:v1"
+        args.dry_run = False
+        # Use a real reporter instance so .info / .header / .success exist.
+        from sanity_gravity.core.reporter import Reporter
+        args.reporter = Reporter(sinks=[], run_id="test")
 
-        snapshot_mod.snapshot_cmd(args)
+        from sanity_gravity.effects.actions import RunSubprocess
+        from sanity_gravity.verbs import snapshot_hooks as sh
 
-        def _flat(c):
-            return " ".join(c) if isinstance(c, (list, tuple)) else c
-        flat_cmds = [_flat(call_args[0][0]) for call_args in mock_run.call_args_list]
+        captured: list = []
 
-        inspect_call = [c for c in flat_cmds if "docker inspect" in c]
-        assert len(inspect_call) > 0
+        # Stub the executor so we don't actually run docker commit.
+        with patch.object(
+            sh, "register_builtin_snapshot_hooks",
+            wraps=sh.register_builtin_snapshot_hooks,
+        ):
+            with patch(
+                "sanity_gravity.verbs.snapshot.build_default_executor"
+            ) as mk_exec:
+                fake_exec = MagicMock()
+                fake_exec.drain.side_effect = lambda actions, phase=None: captured.extend(actions)
+                fake_exec.close = lambda: None
+                mk_exec.return_value = fake_exec
+                snapshot_mod.snapshot_cmd(args)
 
-        commit_calls = [c for c in flat_cmds if "docker commit" in c]
-        assert len(commit_calls) > 0
-
-        expected_commit = "docker commit my-proj-ag-xfce-ssh-1 my-image:v1"
-        assert expected_commit in commit_calls[0]
+        # The plan must have inspected the container.
+        flat_inspect = [
+            " ".join(c.args[0]) if isinstance(c.args[0], (list, tuple)) else c.args[0]
+            for c in mock_run.call_args_list
+        ]
+        assert any("docker inspect my-proj-ag-xfce-ssh-1" in c for c in flat_inspect)
+        # And queued exactly one docker commit Action.
+        commits = [
+            a for a in captured
+            if isinstance(a, RunSubprocess) and "commit" in a.argv
+        ]
+        assert len(commits) == 1
+        assert commits[0].argv == (
+            "docker", "commit", "my-proj-ag-xfce-ssh-1", "my-image:v1",
+        )
 
     @patch("sanity_gravity.verbs.up.run_command")
     @patch("sanity_gravity.verbs.up.get_uid_gid_user", return_value=(1000, 1000, "dev"))
