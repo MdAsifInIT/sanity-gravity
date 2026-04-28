@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import atexit
 import shlex
 import subprocess
 import os
@@ -1883,7 +1884,10 @@ def main():
         "--log-format",
         choices=["text", "json"],
         default="text",
-        help="Output format for narration ('text' = colourised, 'json' = JSONL events)",
+        help=(
+            "Output format (must precede subcommand). 'text' = ANSI on stdout "
+            "(default). 'json' = JSONL narration on stderr; data still on stdout."
+        ),
     )
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
@@ -2045,6 +2049,9 @@ def main():
         reporter = build_default_reporter(log_format=getattr(args, "log_format", "text"))
         set_reporter(reporter)
         args.reporter = reporter
+        # Ensure file-backed sinks flush and release their handles even
+        # on KeyboardInterrupt / unhandled exception paths.
+        atexit.register(reporter.close)
         reporter.header(f"run-id: {reporter.run_id}")
 
     try:

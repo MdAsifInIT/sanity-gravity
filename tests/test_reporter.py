@@ -105,6 +105,49 @@ def test_build_default_reporter_text_mode(tmp_path, monkeypatch):
     assert len(r.sinks) == 2  # AnsiSink + FileSink
 
 
+def test_build_default_reporter_json_mode_writes_to_stderr(tmp_path, capsys):
+    """JSON-mode JsonlSink must write to stderr so stdout stays clean
+    for structured data payloads (the ``list`` matrix, ``--json``
+    arrays, ``docker compose ps`` passthrough, etc.)."""
+    r = build_default_reporter(log_format="json", base=tmp_path / "runs")
+    r.info("hello-json")
+    captured = capsys.readouterr()
+    # Narration must land on stderr.
+    assert "hello-json" in captured.err
+    err_lines = [ln for ln in captured.err.splitlines() if ln.strip()]
+    assert err_lines, "expected at least one JSONL line on stderr"
+    payload = json.loads(err_lines[0])
+    assert payload["type"] == "Info"
+    assert payload["message"] == "hello-json"
+    # And nothing should land on stdout.
+    assert captured.out == ""
+
+
+def test_file_sink_close_releases_handle(tmp_path):
+    """FileSink.close() must release its file handle and be idempotent."""
+    sink = FileSink(run_id="closetest", base=tmp_path)
+    sink.consume(Info(ts=0.0, run_id="closetest", level="info", message="m"))
+    assert sink._fp is not None and not sink._fp.closed
+    fp = sink._fp
+    sink.close()
+    assert sink._fp is None
+    assert fp.closed
+    # Idempotent: a second close is a no-op, not an error.
+    sink.close()
+
+
+def test_reporter_close_propagates_to_sinks(tmp_path):
+    """Reporter.close() must call close() on every sink that has one
+    and must not raise for sinks that don't."""
+    file_sink = FileSink(run_id="rcclose", base=tmp_path)
+    ansi_sink = AnsiSink(io.StringIO())  # no close() method
+    r = Reporter(sinks=[file_sink, ansi_sink], run_id="rcclose")
+    r.info("x")
+    assert file_sink._fp is not None
+    r.close()
+    assert file_sink._fp is None
+
+
 def test_cli_list_visual_parity_only_run_id_header():
     """Legacy ``list`` output must be byte-identical except for the new
     ``run-id:`` header line emitted at startup."""

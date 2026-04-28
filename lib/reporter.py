@@ -215,6 +215,22 @@ class FileSink:
             # Disk pressure or closed stream — give up silently.
             self._broken = True
 
+    def close(self) -> None:
+        """Close the underlying file handle if open.
+
+        Idempotent and exception-safe: safe to call from ``atexit`` even
+        if the sink was never written to or already closed.
+        """
+        fp = self._fp
+        self._fp = None
+        if fp is None:
+            return
+        try:
+            fp.close()
+        except OSError:
+            # Best-effort cleanup; nothing useful to do on failure.
+            pass
+
 
 class Reporter:
     """Builds events with run_id/timestamp and fans them out to sinks."""
@@ -266,6 +282,23 @@ class Reporter:
             AccessInfo(connector=connector, fields=dict(fields), **self._stamp("info"))
         )
 
+    def close(self) -> None:
+        """Close any sinks that own external resources (e.g. file handles).
+
+        Sinks without a ``close`` method are skipped. Failures are logged
+        but never raised — this is meant to run from ``atexit``.
+        """
+        for sink in self.sinks:
+            close = getattr(sink, "close", None)
+            if not callable(close):
+                continue
+            try:
+                close()
+            except Exception as exc:  # pragma: no cover - defensive
+                sys.stderr.write(
+                    f"warning: sink {type(sink).__name__} close failed: {exc}\n"
+                )
+
 
 def build_default_reporter(
     log_format: str = "text",
@@ -275,12 +308,18 @@ def build_default_reporter(
     """Construct the standard reporter wiring used by the CLI.
 
     - ``text`` mode: AnsiSink to stdout + always-on FileSink.
-    - ``json`` mode: JsonlSink to stdout + always-on FileSink.
+    - ``json`` mode: JsonlSink to **stderr** + always-on FileSink.
+
+    The JSON-mode routing follows the Unix convention: data on stdout,
+    narration/diagnostics on stderr. This keeps ``stdout`` clean for
+    structured payloads (e.g. the ``list`` matrix, ``--json`` arrays,
+    ``docker compose ps`` passthrough) while still letting consumers
+    capture every event via ``2> events.jsonl``.
     """
     run_id = uuid.uuid4().hex[:8]
     sinks: list[Sink] = []
     if log_format == "json":
-        sinks.append(JsonlSink(sys.stdout))
+        sinks.append(JsonlSink(sys.stderr))
     else:
         sinks.append(AnsiSink(sys.stdout))
     sinks.append(FileSink(run_id, base=base))
