@@ -13,9 +13,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Make ``lib/`` importable the same way sanity-cli does.
+# Make the package importable the same way sanity-cli does.
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_REPO_ROOT / "lib"))
+sys.path.insert(0, str(_REPO_ROOT))
 
 from sanity_gravity.core.eventbus import EventBus, Hook, get_default_bus, on  # noqa: E402
 from sanity_gravity.domain.phase import Phase  # noqa: E402

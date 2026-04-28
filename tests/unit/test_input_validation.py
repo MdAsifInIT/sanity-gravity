@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_REPO_ROOT / "lib"))
+sys.path.insert(0, str(_REPO_ROOT))
 
 from sanity_gravity.cli.io import (  # noqa: E402
     validate_project_name,

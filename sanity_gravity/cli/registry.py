@@ -22,9 +22,12 @@ DEFAULT_TAG = "ag-xfce-kasm"
 
 
 def _repo_root() -> str:
-    """Return the repository root (3 dirs up from this file)."""
+    """Return the repository root (3 dirs up from this file).
+
+    This file lives at ``<repo>/sanity_gravity/cli/registry.py``.
+    """
     return os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
 
 

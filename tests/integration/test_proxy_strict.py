@@ -3,7 +3,7 @@ import sys
 import os
 import unittest
 
-sys.path.append(os.path.abspath("lib"))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from sanity_gravity.infra.proxy_manager import ProxyManager
 from sanity_gravity.verbs import _compose_gen as cli
 

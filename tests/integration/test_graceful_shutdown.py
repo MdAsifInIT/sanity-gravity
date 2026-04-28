@@ -24,7 +24,7 @@ from tests.conftest import DEFAULT_KASM_IMAGE
 # helper from the new location.
 import sys
 sys.path.insert(0, os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "lib")
+    os.path.join(os.path.dirname(__file__), "..", "..")
 ))
 
 

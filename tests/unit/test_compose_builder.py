@@ -20,9 +20,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-# Make ``lib/`` importable the same way sanity-cli does.
+# Make the package importable the same way sanity-cli does.
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_REPO_ROOT / "lib"))
+sys.path.insert(0, str(_REPO_ROOT))
 
 from sanity_gravity.compose.builder import ComposeBuilder, ComposeService  # noqa: E402
 

@@ -139,11 +139,11 @@ No core code edits — the kernel re-discovers the plugin tree on each run.
 
 ## CLI Package Layout
 
-The `sanity-cli` script at the repo root is a 20-line shim. All CLI logic lives
-in the `lib/sanity_gravity/` package:
+The `sanity-cli` script at the repo root is a thin shim. All CLI logic lives
+in the `sanity_gravity/` package next to it:
 
 ```
-lib/sanity_gravity/
+sanity_gravity/
 ├── cli/         # argparse setup + entry point + dispatch
 ├── verbs/       # one file per CLI verb (build, up, down, status, …)
 ├── core/        # microkernel: orchestrator, eventbus, reporter, command

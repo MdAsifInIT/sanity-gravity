@@ -165,8 +165,9 @@ def default_registry(root: str | Path | None = None) -> PluginRegistry:
     global _DEFAULT
     if _DEFAULT is None:
         if root is None:
-            # repo root assumption: lib/plugins.py → ../plugins
-            root = Path(__file__).resolve().parent.parent / "plugins"
+            # This file lives at <repo>/sanity_gravity/plugins/registry.py;
+            # walk three parents up to reach <repo>, then descend into plugins/.
+            root = Path(__file__).resolve().parent.parent.parent / "plugins"
         _DEFAULT = PluginRegistry.from_dir(root)
     return _DEFAULT
 

@@ -63,10 +63,10 @@ def ide_cmd(args):
     print_info(
         "Hot-injecting latest gravity-cli and chrome-cleanup for compatibility..."
     )
-    # Resolve repo root: the package lives at lib/sanity_gravity/verbs/ide.py,
-    # so go four parents up to reach the repo root.
+    # Resolve repo root: this file lives at sanity_gravity/verbs/ide.py,
+    # so go three parents up to reach the repo root.
     base_dir = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
     cli_src = os.path.join(
         base_dir, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli"

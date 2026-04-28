@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_REPO_ROOT / "lib"))
+sys.path.insert(0, str(_REPO_ROOT))
 
 from sanity_gravity.domain.capability import CapabilityConflictError, solve  # noqa: E402
 from sanity_gravity.domain.tags import Tag  # noqa: E402
