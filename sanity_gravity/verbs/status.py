@@ -21,7 +21,6 @@ from sanity_gravity.cli.registry import (
     get_registry,
 )
 from sanity_gravity.verbs.lifecycle import (
-    COMPOSE_FILE,
     get_active_projects,
     get_legacy_projects,
 )
@@ -48,8 +47,12 @@ def status(args):
     for project in projects_to_show:
         print_header(f"Sandbox Status ({project})")
         try:
+            # Identify the project by name only — docker compose looks up
+            # active containers via the project label, no compose file needed.
+            # (Passing -f to a non-existent file silently returns empty,
+            # which is the bug PR #6's modular config layout exposed.)
             output = run_command(
-                ("docker", "compose", "-p", project, "-f", COMPOSE_FILE, "ps", "-a"),
+                ("docker", "compose", "-p", project, "ps", "-a"),
                 capture=True, check=False,
             )
             if output:

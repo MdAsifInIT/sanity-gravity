@@ -12,7 +12,7 @@ from sanity_gravity.cli.io import (
     run_command,
 )
 from sanity_gravity.cli.registry import VALID_TAGS, parse_tag
-from sanity_gravity.verbs.lifecycle import COMPOSE_FILE, get_active_projects
+from sanity_gravity.verbs.lifecycle import get_active_projects
 
 
 def open_cmd(args):
@@ -51,7 +51,7 @@ def open_cmd(args):
     def resolve_port(service, internal):
         try:
             out = run_command(
-                ("docker", "compose", "-p", project_name, "-f", COMPOSE_FILE,
+                ("docker", "compose", "-p", project_name,
                  "port", service, str(internal)),
                 capture=True, check=False,
             )
