@@ -139,26 +139,68 @@ def test_invalid_kind_rejected(tmp_path):
         load_manifest(path)
 
 
-def test_ports_on_non_connector_rejected(tmp_path):
-    path = _write(
-        tmp_path,
-        '[plugin]\nslug = "x"\nname = "x"\nkind = "agent"\napi_version = "1"\n'
-        '[build]\ndockerfile = "Dockerfile"\n'
-        '[ports.web]\ninternal = 80\ndefault = 80\nenv_var = "WEB_PORT"\n',
+def test_agent_can_declare_ports():
+    """Symmetric schema: any kind may declare [ports.<label>]."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        path = _write(
+            Path(td),
+            '[plugin]\nslug = "x"\nname = "x"\nkind = "agent"\napi_version = "1"\n'
+            '[build]\ndockerfile = "Dockerfile"\n'
+            '[ports.web]\ninternal = 80\ndefault = 8080\nenv_var = "WEB_PORT"\n',
+        )
+        m = load_manifest(path)
+    assert m.kind == "agent"
+    assert m.ports_by_label()["web"] == PortSpec(
+        label="web", internal=80, default=8080, env_var="WEB_PORT"
     )
-    with pytest.raises(ManifestError, match=r"\[ports\.\*\] only valid on kind=connector"):
-        load_manifest(path)
 
 
-def test_announce_on_non_connector_rejected(tmp_path):
-    path = _write(
-        tmp_path,
-        '[plugin]\nslug = "x"\nname = "x"\nkind = "desktop"\napi_version = "1"\n'
-        '[build]\ndockerfile = "Dockerfile"\n'
-        '[announce]\ntemplate = "hi"\n',
-    )
-    with pytest.raises(ManifestError, match=r"\[announce\] only valid on kind=connector"):
-        load_manifest(path)
+def test_desktop_can_declare_announce():
+    """Symmetric schema: any kind may declare [announce]."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        path = _write(
+            Path(td),
+            '[plugin]\nslug = "x"\nname = "x"\nkind = "desktop"\napi_version = "1"\n'
+            '[build]\ndockerfile = "Dockerfile"\n'
+            '[announce]\ntemplate = "Resolution: 1920x1080"\n',
+        )
+        m = load_manifest(path)
+    assert m.kind == "desktop"
+    assert isinstance(m.announce, AnnounceSpec)
+    assert "1920x1080" in m.announce.template
+
+
+def test_agent_can_declare_environment():
+    """Symmetric schema: any kind may declare [environment]."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        path = _write(
+            Path(td),
+            '[plugin]\nslug = "x"\nname = "x"\nkind = "agent"\napi_version = "1"\n'
+            '[build]\ndockerfile = "Dockerfile"\n'
+            '[environment]\nOPENAI_API_KEY = "${OPENAI_API_KEY:-}"\n',
+        )
+        m = load_manifest(path)
+    assert m.kind == "agent"
+    env = dict(m.environment)
+    assert env["OPENAI_API_KEY"] == "${OPENAI_API_KEY:-}"
+
+
+def test_desktop_can_declare_compose_overlay():
+    """Symmetric schema: any kind may declare [compose]."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        path = _write(
+            Path(td),
+            '[plugin]\nslug = "x"\nname = "x"\nkind = "desktop"\napi_version = "1"\n'
+            '[build]\ndockerfile = "Dockerfile"\n'
+            '[compose]\nshm_size = "1g"\n',
+        )
+        m = load_manifest(path)
+    assert m.kind == "desktop"
+    assert m.compose.shm_size == "1g"
 
 
 def test_missing_dockerfile_key_rejected(tmp_path):

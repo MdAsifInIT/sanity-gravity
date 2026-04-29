@@ -1,42 +1,61 @@
 """Plugin manifest loader.
 
 Each plugin under ``plugins/<kind>/<slug>/`` ships a ``manifest.toml``
-describing the plugin's identity, capabilities, build artifact, and
-(for connectors) ports / compose overlay / announce template.
+describing the plugin's identity, capabilities, build artifact, and any
+optional ports / compose overlay / environment / announce template.
+
+The schema is **symmetric across kinds**: agent, desktop, and connector
+manifests may all declare any of the optional sections below. Historically
+only connectors did, but plugins of any kind sometimes need extra env
+vars (e.g. an agent that wants ``OPENAI_API_KEY``), extra ports, or a
+custom announce blurb. Generators / hooks merge contributions from all
+three plugins of a tag (agent + desktop + connector) — see
+``_compose_gen.generate_compose_for_tag`` and ``up_hooks.announce`` for
+the merge semantics (last-write-wins on collisions; connector first,
+then agent, then desktop).
 
 Schema (TOML)::
 
-    [plugin]
+    [plugin]                                            # required
     slug = "kasm"; name = "KasmVNC"; kind = "connector"; api_version = "1"
 
-    [capabilities]
+    [capabilities]                                      # optional
     provides = ["http-gui"]
     requires = ["display"]
 
-    [build]
+    [build]                                             # required
     dockerfile = "Dockerfile"
 
-    # connectors only
+    # optional, any kind
     [ports.<label>]
     internal = 8444
     default  = 8444
     env_var  = "KASM_PORT"
 
-    # connectors only, optional
+    # optional, any kind
     [compose]
     shm_size = "512m"; restart = "unless-stopped"; stop_grace_period = "30s"
 
-    # connectors only, optional (env vars merged into service)
+    # optional, any kind — env vars merged into the service `environment`
     [environment]
     VNC_PW = "${VNC_PW:-${HOST_PASSWORD}}"
+    OPENAI_API_KEY = "${OPENAI_API_KEY:-}"
 
-    # connectors only, optional
+    # optional, any kind — str.format template with placeholders:
+    #   {ports.<label>}, {user}, {password}, {tag}, {connector}, {container_name}
+    # Each non-empty plugin's template is rendered separately and the
+    # resulting AccessInfo fields concatenated into a single block.
     [announce]
-    template = "...str.format with ports.<label>, user, password, tag, connector..."
+    template = "..."
 
 The loader is intentionally tiny: validate fields, fail fast with line-
 ish diagnostics, and return frozen dataclasses. No defaults are inferred
 from outside the manifest itself, so every plugin is self-describing.
+
+If a plugin needs to express something the schema can't (a runtime
+side effect, a state-machine step), drop a ``hooks.py`` next to
+``manifest.toml`` — see :mod:`sanity_gravity.plugins.registry` for how
+those modules are loaded into the EventBus.
 """
 from __future__ import annotations
 
@@ -70,7 +89,7 @@ class ManifestError(ValueError):
 
 @dataclass(frozen=True)
 class PortSpec:
-    """A single named port on a connector plugin."""
+    """A single named port on a plugin (any kind may declare ports)."""
 
     label: str
     internal: int
@@ -80,7 +99,7 @@ class PortSpec:
 
 @dataclass(frozen=True)
 class ComposeOverlay:
-    """Optional connector-level compose-service overrides."""
+    """Optional compose-service overrides (any kind may declare these)."""
 
     shm_size: str | None = None
     restart: str | None = None
@@ -96,7 +115,7 @@ class ComposeOverlay:
 
 @dataclass(frozen=True)
 class AnnounceSpec:
-    """Optional connector-level announce template (str.format)."""
+    """Optional announce template (str.format) — any kind may declare it."""
 
     template: str
 
@@ -264,30 +283,14 @@ def load_manifest(path: str | Path) -> PluginManifest:
         _require(build, "dockerfile", f"{p}:[build]"), f"{p}:[build].dockerfile"
     )
 
+    # Optional sections — the schema is symmetric: any kind (agent /
+    # desktop / connector) may declare ports, compose overlay,
+    # environment, or an announce template. Generators merge
+    # contributions across all three plugins of a tag.
     ports = _parse_ports(data.get("ports"), f"{p}:[ports]")
     compose = _parse_compose(data.get("compose"), f"{p}:[compose]")
     environment = _parse_environment(data.get("environment"), f"{p}:[environment]")
     announce = _parse_announce(data.get("announce"), f"{p}:[announce]")
-
-    # Connector-only fields are tolerated on other kinds (forward-compat),
-    # but the typical plugin won't set them. Reject obvious mismatches.
-    if kind != "connector":
-        if ports:
-            raise ManifestError(
-                f"{p}: [ports.*] only valid on kind=connector (got '{kind}')"
-            )
-        if not compose.is_empty():
-            raise ManifestError(
-                f"{p}: [compose] only valid on kind=connector (got '{kind}')"
-            )
-        if environment:
-            raise ManifestError(
-                f"{p}: [environment] only valid on kind=connector (got '{kind}')"
-            )
-        if announce is not None:
-            raise ManifestError(
-                f"{p}: [announce] only valid on kind=connector (got '{kind}')"
-            )
 
     return PluginManifest(
         slug=slug,

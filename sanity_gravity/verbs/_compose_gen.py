@@ -28,16 +28,20 @@ except ImportError:  # pragma: no cover - lib is shipped with the repo
 
 
 def generate_compose_for_tag(tag):
-    """Generate the per-tag docker-compose YAML, driven by the connector manifest.
+    """Generate the per-tag docker-compose YAML, driven by plugin manifests.
 
-    Ports / compose params / environment overrides come from the
-    connector plugin's ``manifest.toml``: the dispatch on
-    ``connector == "kasm" | "vnc"`` is gone, so adding e.g. an ``rdp``
-    connector needs no edits here.
+    Ports / compose params / environment overrides are merged from the
+    agent, desktop, and connector manifests — any kind may contribute
+    any optional section. Merge order is **connector first, then agent,
+    then desktop** (last-write-wins on collisions). Connectors typically
+    own the network-facing ports; agents and desktops typically only add
+    env vars, but the schema places no restriction.
     """
     agent, desktop, connector = parse_tag(tag)
     reg = get_registry()
     connector_m = reg.connectors[connector]
+    agent_m = reg.agents.get(agent)
+    desktop_m = reg.desktops.get(desktop)
 
     service_name = tag
 
@@ -52,14 +56,42 @@ def generate_compose_for_tag(tag):
         "HOST_USER": "${HOST_USER:-developer}",
         "HOST_PASSWORD": "${HOST_PASSWORD:-antigravity}",
     }
-    for k, v in connector_m.environment:
-        environment[k] = v
+    # Merge order: connector, then agent, then desktop. Last-write-wins.
+    for plugin_m in (connector_m, agent_m, desktop_m):
+        if plugin_m is None:
+            continue
+        for k, v in plugin_m.environment:
+            environment[k] = v
 
-    ports = [
-        f"${{{p.env_var}:-{p.default}}}:{p.internal}" for p in connector_m.ports
-    ]
+    # Ports: union across kinds, keyed by internal port to avoid duplicate
+    # publish entries (a host:container line is identified by its container
+    # port). Connector wins on conflicts since it's first in the merge.
+    seen_internal: dict[int, str] = {}
+    for plugin_m in (connector_m, agent_m, desktop_m):
+        if plugin_m is None:
+            continue
+        for p in plugin_m.ports:
+            if p.internal in seen_internal:
+                continue
+            seen_internal[p.internal] = f"${{{p.env_var}:-{p.default}}}:{p.internal}"
+    ports = list(seen_internal.values())
 
-    overlay = connector_m.compose
+    # Compose overlay: same connector-then-agent-then-desktop precedence.
+    # Last non-None wins for each scalar field.
+    shm_size = connector_m.compose.shm_size
+    restart = connector_m.compose.restart
+    stop_grace_period = connector_m.compose.stop_grace_period
+    for plugin_m in (agent_m, desktop_m):
+        if plugin_m is None:
+            continue
+        ov = plugin_m.compose
+        if ov.shm_size is not None:
+            shm_size = ov.shm_size
+        if ov.restart is not None:
+            restart = ov.restart
+        if ov.stop_grace_period is not None:
+            stop_grace_period = ov.stop_grace_period
+
     svc = ComposeService(
         name=service_name,
         image=image,
@@ -70,9 +102,9 @@ def generate_compose_for_tag(tag):
         ],
         ports=ports,
         network_mode="bridge",
-        shm_size=overlay.shm_size,
-        restart=overlay.restart,
-        stop_grace_period=overlay.stop_grace_period,
+        shm_size=shm_size,
+        restart=restart,
+        stop_grace_period=stop_grace_period,
         ulimits={"nofile": {"soft": 65536, "hard": 65536}},
         labels={"sanity.gravity.managed": "true"},
     )

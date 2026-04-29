@@ -14,7 +14,7 @@ from pathlib import Path
 
 from sanity_gravity.effects.actions import RunSubprocess
 from sanity_gravity.core.command import CommandBuilder
-from sanity_gravity.core.eventbus import EventBus
+from sanity_gravity.core.eventbus import EventBus, get_default_bus
 from sanity_gravity.domain.phase import Phase
 from sanity_gravity.plugins.registry import default_registry
 
@@ -190,21 +190,27 @@ class _PortsView:
             raise KeyError(f"Unknown port label '{name}' in announce template") from exc
 
 
-def _ports_for_announce(ctx, connector_manifest) -> dict[str, str]:
+def _ports_for_announce(ctx, *manifests) -> dict[str, str]:
     """Map manifest port labels onto the runtime-resolved port dict.
 
     The runtime ``resolved_ports`` dict is keyed by legacy slug
-    (``ssh`` / ``kasm`` / ``vnc`` / ``novnc``); the manifest port labels
-    are connector-author-defined (``ssh`` / ``http`` / ``vnc`` / ``novnc``).
+    (``ssh`` / ``kasm`` / ``vnc`` / ``novnc``); manifest port labels
+    are author-defined (``ssh`` / ``http`` / ``vnc`` / ``novnc``).
     We bridge by matching ``PortSpec.internal`` against a legacy table.
+    Accepts any number of manifests (agent / desktop / connector); a
+    label declared by multiple plugins on the same internal port simply
+    resolves to the same value.
     """
     rp = ctx.resolved_ports
     legacy_by_internal = {22: "ssh", 8444: "kasm", 5901: "vnc", 6901: "novnc"}
     out: dict[str, str] = {}
-    for port in connector_manifest.ports:
-        legacy = legacy_by_internal.get(port.internal)
-        if legacy is not None and legacy in rp:
-            out[port.label] = rp[legacy]
+    for manifest in manifests:
+        if manifest is None:
+            continue
+        for port in manifest.ports:
+            legacy = legacy_by_internal.get(port.internal)
+            if legacy is not None and legacy in rp:
+                out[port.label] = rp[legacy]
     return out
 
 
@@ -233,13 +239,15 @@ def _render_announce(template: str, **keys) -> dict[str, str]:
 
 
 def announce(ctx) -> None:
-    """UP_ANNOUNCE: render the connector manifest's announce template
-    and emit AccessInfo + final success line.
+    """UP_ANNOUNCE: render announce templates from all plugins of the tag.
 
-    The announce text is no longer hardcoded per-connector: each plugin's
-    ``manifest.toml`` carries an ``[announce] template = "..."`` block
-    interpolated via plain ``str.format`` (no Jinja, no eval). The
-    AnsiSink renders the resulting fields byte-identically to PR #5.
+    Each of the agent / desktop / connector manifests may carry an
+    ``[announce] template = "..."`` block. Templates are rendered
+    independently and the resulting fields concatenated into a single
+    AccessInfo block (connector first, then agent, then desktop). This
+    keeps a familiar single "access details" pane while letting any
+    plugin contribute lines (e.g. an agent advertising an extra HTTP
+    port, or a desktop noting the resolution).
 
     In dry-run mode, no container exists and ephemeral ports were not
     resolved, so emit a single planned-outcome summary instead of the
@@ -262,25 +270,48 @@ def announce(ctx) -> None:
 
     ctx.reporter.success(f"{ctx.tag} is running.")
 
-    manifest = default_registry().get("connector", connector_slug)
-    if manifest.announce is None:
-        return
+    reg = default_registry()
+    connector_m = reg.get("connector", connector_slug)
+    agent_m = reg.agents.get(ctx.tag.agent)
+    desktop_m = reg.desktops.get(ctx.tag.desktop)
 
-    fields = _render_announce(
-        manifest.announce.template,
-        ports=_PortsView(_ports_for_announce(ctx, manifest)),
+    ports_view = _PortsView(_ports_for_announce(ctx, connector_m, agent_m, desktop_m))
+    fmt_kwargs = dict(
+        ports=ports_view,
         user=user,
         password=ctx.password,
         tag=str(ctx.tag),
         connector=connector_slug,
         container_name=ctx.container_name,
     )
-    ctx.reporter.access(connector_slug, fields)
+
+    merged: dict[str, str] = {}
+    for manifest in (connector_m, agent_m, desktop_m):
+        if manifest is None or manifest.announce is None:
+            continue
+        rendered = _render_announce(manifest.announce.template, **fmt_kwargs)
+        # Last-write-wins on collisions — connector goes first so its
+        # canonical fields (URL, SSH, User, Pass) keep their values
+        # unless a downstream plugin deliberately overrides.
+        merged.update(rendered)
+
+    if merged:
+        ctx.reporter.access(connector_slug, merged)
 
 
 def register_builtin_up_hooks(bus: EventBus) -> None:
-    """Subscribe builtin up hooks. Priorities (100/200/300) are spaced
-    so plugin hooks can slot in between without renumbering."""
+    """Subscribe builtin up hooks, then splice in plugin-contributed ones.
+
+    Priorities (100/200/300) are spaced so plugin hooks can slot in
+    between without renumbering. After the builtins are registered, the
+    default bus (where ``@on``-decorated plugin hooks live) is merged in
+    so plugin subscriptions fire alongside the builtins.
+    """
+    # Touch the default registry so plugin ``hooks.py`` files are
+    # discovered and their ``@on`` decorators register on the default bus
+    # before we splice it in.
+    default_registry()
+
     bus.subscribe(Phase.UP_VALIDATE, validate_inputs, priority=100)
     bus.subscribe(Phase.UP_COMPOSE, gen_main_compose, priority=100)
     bus.subscribe(Phase.UP_COMPOSE, gen_git_compose, priority=200)
@@ -290,3 +321,5 @@ def register_builtin_up_hooks(bus: EventBus) -> None:
     bus.subscribe(Phase.UP_DOCKER, resolve_ephemeral, priority=200)
     bus.subscribe(Phase.UP_PROVISION, sync_config_hook, priority=100)
     bus.subscribe(Phase.UP_ANNOUNCE, announce, priority=100)
+
+    get_default_bus().merge_into(bus)

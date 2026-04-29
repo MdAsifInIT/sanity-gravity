@@ -15,7 +15,7 @@ from pathlib import Path
 
 from sanity_gravity.cli.colors import Colors
 from sanity_gravity.core.command import CommandBuilder
-from sanity_gravity.core.eventbus import EventBus
+from sanity_gravity.core.eventbus import EventBus, get_default_bus
 from sanity_gravity.domain.phase import Phase
 from sanity_gravity.effects.actions import RunSubprocess
 
@@ -168,9 +168,14 @@ def register_builtin_lifecycle_hooks(bus: EventBus) -> None:
     The ``clean`` prompt is also registered here at priority 50 (before
     the existence check) — it short-circuits via ``ctx.cancelled``.
     """
+    from sanity_gravity.plugins.registry import default_registry
+    default_registry()  # ensure plugin hooks.py modules are loaded
+
     bus.subscribe(Phase.DOWN_BEFORE, lifecycle_clean_prompt, priority=50)
     bus.subscribe(Phase.DOWN_BEFORE, lifecycle_check_existence, priority=100)
     bus.subscribe(Phase.DOWN_BEFORE, lifecycle_resolve_compose, priority=200)
     bus.subscribe(Phase.DOWN_BEFORE, lifecycle_recover_env, priority=300)
     bus.subscribe(Phase.DOWN_DOCKER, lifecycle_compose_action, priority=100)
     bus.subscribe(Phase.DOWN_AFTER, lifecycle_announce, priority=100)
+
+    get_default_bus().merge_into(bus)

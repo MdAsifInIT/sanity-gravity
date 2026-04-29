@@ -25,7 +25,7 @@ from sanity_gravity.cli.registry import (
     parse_tag,
 )
 from sanity_gravity.core.command import CommandBuilder
-from sanity_gravity.core.eventbus import EventBus
+from sanity_gravity.core.eventbus import EventBus, get_default_bus
 from sanity_gravity.domain.phase import Phase
 from sanity_gravity.effects.actions import RunSubprocess
 
@@ -279,7 +279,12 @@ def build_done(ctx) -> None:
 
 
 def register_builtin_build_hooks(bus: EventBus) -> None:
-    """Subscribe build hooks to the event bus."""
+    """Subscribe build hooks; splice in plugin-contributed hooks last."""
+    from sanity_gravity.plugins.registry import default_registry
+    default_registry()  # ensure plugin hooks.py modules are loaded
+
     bus.subscribe(Phase.BUILD_PLAN, build_plan, priority=100)
     bus.subscribe(Phase.BUILD_LAYER, build_layers, priority=100)
     bus.subscribe(Phase.BUILD_DONE, build_done, priority=100)
+
+    get_default_bus().merge_into(bus)

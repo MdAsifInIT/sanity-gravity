@@ -13,7 +13,7 @@ import sys
 from sanity_gravity.cli.colors import Colors
 from sanity_gravity.cli.io import run_command
 from sanity_gravity.cli.registry import VALID_TAGS
-from sanity_gravity.core.eventbus import EventBus
+from sanity_gravity.core.eventbus import EventBus, get_default_bus
 from sanity_gravity.domain.phase import Phase
 from sanity_gravity.effects.actions import RunSubprocess
 
@@ -135,7 +135,12 @@ def snapshot_announce(ctx) -> None:
 
 
 def register_builtin_snapshot_hooks(bus: EventBus) -> None:
+    from sanity_gravity.plugins.registry import default_registry
+    default_registry()  # ensure plugin hooks.py modules are loaded
+
     bus.subscribe(Phase.SNAPSHOT_PLAN, snapshot_resolve_project, priority=50)
     bus.subscribe(Phase.SNAPSHOT_PLAN, snapshot_resolve_container, priority=100)
     bus.subscribe(Phase.SNAPSHOT_DOCKER, snapshot_commit, priority=100)
     bus.subscribe(Phase.SNAPSHOT_DONE, snapshot_announce, priority=100)
+
+    get_default_bus().merge_into(bus)
