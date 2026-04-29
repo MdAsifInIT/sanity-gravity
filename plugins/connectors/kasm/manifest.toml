@@ -5,7 +5,12 @@ kind = "connector"
 api_version = "1"
 
 [capabilities]
-provides = ["http-gui"]
+# Both kasm and vnc deliver the same capability shape ("remote graphical
+# access"); we use one stable name so future agents can require it
+# without caring which specific protocol provides it. The current
+# capability solver only makes `display` load-bearing — these provides
+# strings are descriptive labels reserved for forward-compat.
+provides = ["graphical-remote"]
 requires = ["display"]
 
 [build]
