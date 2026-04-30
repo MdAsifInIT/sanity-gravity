@@ -26,9 +26,9 @@ from sanity_gravity.core.orchestrator import (  # noqa: E402
     PortRequest,
     UpContext,
     UpOrchestrator,
-    register_builtin_up_hooks,
     _UP_PHASES,
 )
+from sanity_gravity.hooks.up import register_builtin_up_hooks  # noqa: E402
 from sanity_gravity.domain.phase import Phase  # noqa: E402
 from sanity_gravity.domain.tags import Tag  # noqa: E402
 

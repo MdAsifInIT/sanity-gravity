@@ -3,8 +3,8 @@
 This module defines :class:`Orchestrator` — the generic phase-loop
 driver — plus the per-verb mutable contexts (``UpContext``,
 ``BuildContext``, ``DownContext``, ``CleanContext``,
-``SnapshotContext``). Hook implementations live in the matching
-``verbs/*_hooks.py`` modules; this file is just orchestration glue.
+``SnapshotContext``). Builtin hook implementations for each verb live
+under :mod:`sanity_gravity.hooks`; this file is just orchestration glue.
 """
 from __future__ import annotations
 
@@ -16,8 +16,6 @@ from sanity_gravity.effects.actions import Action
 from sanity_gravity.core.eventbus import EventBus
 from sanity_gravity.domain.phase import Phase
 from sanity_gravity.domain.tags import Tag
-# Re-export hook registration so callers have a single import surface.
-from sanity_gravity.verbs.up_hooks import register_builtin_up_hooks  # noqa: F401
 
 
 @dataclass

@@ -29,7 +29,7 @@ from sanity_gravity.core.orchestrator import (
 )
 from sanity_gravity.effects.actions import ActionFailedError
 from sanity_gravity.effects.executor import build_default_executor
-from sanity_gravity.verbs.lifecycle_hooks import register_builtin_lifecycle_hooks
+from sanity_gravity.hooks.lifecycle import register_builtin_lifecycle_hooks
 
 
 COMPOSE_FILE = "docker-compose.yml"

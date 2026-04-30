@@ -18,7 +18,7 @@ from sanity_gravity.core.orchestrator import (
 )
 from sanity_gravity.effects.actions import ActionFailedError
 from sanity_gravity.effects.executor import build_default_executor
-from sanity_gravity.verbs.snapshot_hooks import register_builtin_snapshot_hooks
+from sanity_gravity.hooks.snapshot import register_builtin_snapshot_hooks
 
 
 def snapshot_cmd(args):

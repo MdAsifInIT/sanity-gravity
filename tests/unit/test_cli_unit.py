@@ -345,7 +345,7 @@ class TestRunResourceArgs:
     @patch("sanity_gravity.verbs.up.run_command")
     @patch("sanity_gravity.verbs.up.get_uid_gid_user", return_value=(1000, 1000, "dev"))
     @patch("sanity_gravity.verbs.up.generate_resource_compose")
-    @patch("sanity_gravity.verbs._compose_gen.ProxyManager")
+    @patch("sanity_gravity.compose.generators.ProxyManager")
     def test_run_with_resources(self, mock_pm, mock_gen_res, mock_user, mock_run):
         mock_instance = mock_pm.return_value
         mock_instance.is_enabled.return_value = False
@@ -535,7 +535,7 @@ class TestNewCommands:
 class TestSnapshot:
     """Tests for snapshot and image features."""
 
-    @patch("sanity_gravity.verbs.snapshot_hooks.run_command")
+    @patch("sanity_gravity.hooks.snapshot.run_command")
     def test_snapshot_command(self, mock_run):
         # docker inspect → return non-empty so the container is "found".
         mock_run.return_value = '[{"Id": "abc"}]'
@@ -552,7 +552,7 @@ class TestSnapshot:
         args.reporter = Reporter(sinks=[], run_id="test")
 
         from sanity_gravity.effects.actions import RunSubprocess
-        from sanity_gravity.verbs import snapshot_hooks as sh
+        from sanity_gravity.hooks import snapshot as sh
 
         captured: list = []
 
@@ -588,7 +588,7 @@ class TestSnapshot:
 
     @patch("sanity_gravity.verbs.up.run_command")
     @patch("sanity_gravity.verbs.up.get_uid_gid_user", return_value=(1000, 1000, "dev"))
-    @patch("sanity_gravity.verbs._compose_gen.ProxyManager")
+    @patch("sanity_gravity.compose.generators.ProxyManager")
     def test_up_with_custom_image(self, mock_pm, mock_user, mock_run):
         mock_instance = mock_pm.return_value
         mock_instance.is_enabled.return_value = False

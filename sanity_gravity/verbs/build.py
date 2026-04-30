@@ -27,7 +27,7 @@ from sanity_gravity.core.orchestrator import (
 )
 from sanity_gravity.effects.actions import ActionFailedError
 from sanity_gravity.effects.executor import build_default_executor
-from sanity_gravity.verbs.build_hooks import (
+from sanity_gravity.hooks.build import (
     SANDBOX_DIR,
     IMAGE_PREFIX,
     _generate_intermediates,

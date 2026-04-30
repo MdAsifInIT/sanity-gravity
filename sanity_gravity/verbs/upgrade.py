@@ -15,7 +15,7 @@ from sanity_gravity.cli.io import (
 )
 from sanity_gravity.cli.registry import VALID_TAGS
 from sanity_gravity.core.command import CommandBuilder
-from sanity_gravity.verbs._compose_gen import generate_git_compose
+from sanity_gravity.compose.generators import generate_git_compose
 from sanity_gravity.verbs.lifecycle import (
     COMPOSE_FILE,
     get_active_projects,

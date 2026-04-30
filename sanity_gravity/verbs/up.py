@@ -30,13 +30,13 @@ from sanity_gravity.core.orchestrator import (
     PortRequest,
     UpContext,
     UpOrchestrator,
-    register_builtin_up_hooks,
 )
 from sanity_gravity.core.eventbus import EventBus
+from sanity_gravity.hooks.up import register_builtin_up_hooks
 from sanity_gravity.domain.tags import Tag
 from sanity_gravity.effects.actions import ActionFailedError
 from sanity_gravity.effects.executor import build_default_executor
-from sanity_gravity.verbs._compose_gen import (
+from sanity_gravity.compose.generators import (
     generate_compose_for_tag,
     generate_git_compose,
     generate_resource_compose,

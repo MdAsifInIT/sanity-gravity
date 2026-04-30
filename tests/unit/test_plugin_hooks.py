@@ -202,7 +202,7 @@ def test_agent_environment_merges_into_compose(monkeypatch, tmp_path):
     reg_mod._DEFAULT = PluginRegistry.from_dir(tmp_path)
 
     monkeypatch.chdir(tmp_path)
-    from sanity_gravity.verbs import _compose_gen as cg
+    from sanity_gravity.compose import generators as cg
     output_file, _ = cg.generate_compose_for_tag("ag-xfce-stub")
 
     import yaml
@@ -238,7 +238,7 @@ def test_desktop_compose_overrides_connector_last_write_wins(monkeypatch, tmp_pa
     reg_mod._DEFAULT = PluginRegistry.from_dir(tmp_path)
 
     monkeypatch.chdir(tmp_path)
-    from sanity_gravity.verbs import _compose_gen as cg
+    from sanity_gravity.compose import generators as cg
     output_file, _ = cg.generate_compose_for_tag("ag-xfce-stub")
 
     import yaml

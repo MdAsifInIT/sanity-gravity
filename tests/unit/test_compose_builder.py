@@ -156,9 +156,9 @@ def test_shm_size_512m_emitted_bare_but_remains_string():
 def _load_cli():
     """Compatibility shim: return a façade exposing the legacy
     ``generate_compose_for_tag`` / ``generate_resource_compose`` callables
-    from the new :mod:`sanity_gravity.verbs._compose_gen` location.
+    from the new :mod:`sanity_gravity.compose.generators` location.
     """
-    from sanity_gravity.verbs import _compose_gen as cg  # noqa: E402
+    from sanity_gravity.compose import generators as cg  # noqa: E402
     return cg
 
 

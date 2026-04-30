@@ -24,7 +24,7 @@ from sanity_gravity.core.orchestrator import (  # noqa: E402
 from sanity_gravity.core.reporter import Reporter  # noqa: E402
 from sanity_gravity.domain.phase import Phase  # noqa: E402
 from sanity_gravity.effects.actions import RunSubprocess  # noqa: E402
-from sanity_gravity.verbs.lifecycle_hooks import (  # noqa: E402
+from sanity_gravity.hooks.lifecycle import (  # noqa: E402
     register_builtin_lifecycle_hooks,
 )
 
@@ -50,7 +50,7 @@ def _stub_lifecycle_helpers():
         "sanity_gravity.verbs.lifecycle.get_project_env",
         return_value={"HOST_USER": "dev"},
     ), patch(
-        "sanity_gravity.verbs.lifecycle_hooks._project_compose_files",
+        "sanity_gravity.hooks.lifecycle._project_compose_files",
         return_value=["config/docker-compose.tag.yml"],
     ):
         yield

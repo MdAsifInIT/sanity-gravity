@@ -24,7 +24,7 @@ from sanity_gravity.core.orchestrator import (  # noqa: E402
 from sanity_gravity.core.reporter import Reporter  # noqa: E402
 from sanity_gravity.domain.phase import Phase  # noqa: E402
 from sanity_gravity.effects.actions import RunSubprocess  # noqa: E402
-from sanity_gravity.verbs.build_hooks import (  # noqa: E402
+from sanity_gravity.hooks.build import (  # noqa: E402
     register_builtin_build_hooks,
 )
 

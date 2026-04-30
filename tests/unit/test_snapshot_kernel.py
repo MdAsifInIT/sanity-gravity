@@ -19,7 +19,7 @@ from sanity_gravity.core.orchestrator import (  # noqa: E402
 from sanity_gravity.core.reporter import Reporter  # noqa: E402
 from sanity_gravity.domain.phase import Phase  # noqa: E402
 from sanity_gravity.effects.actions import RunSubprocess  # noqa: E402
-from sanity_gravity.verbs.snapshot_hooks import (  # noqa: E402
+from sanity_gravity.hooks.snapshot import (  # noqa: E402
     register_builtin_snapshot_hooks,
 )
 
@@ -45,7 +45,7 @@ def test_snapshot_resolves_explicit_variant():
     bus = EventBus()
     register_builtin_snapshot_hooks(bus)
     with patch(
-        "sanity_gravity.verbs.snapshot_hooks.run_command",
+        "sanity_gravity.hooks.snapshot.run_command",
         return_value='[{"Id":"x"}]',
     ):
         ctx = SnapshotContext(
@@ -73,7 +73,7 @@ def test_snapshot_bails_when_explicit_variant_missing():
     register_builtin_snapshot_hooks(bus)
     # Empty docker inspect output → container "not found".
     with patch(
-        "sanity_gravity.verbs.snapshot_hooks.run_command",
+        "sanity_gravity.hooks.snapshot.run_command",
         return_value="[]",
     ):
         ctx = SnapshotContext(
@@ -101,7 +101,7 @@ def test_snapshot_dry_run_uses_placeholder_container():
         project="proj", target_tag="tag:v1", variant="ag-xfce-ssh",
         reporter=_reporter(), dry_run=True,
     )
-    with patch("sanity_gravity.verbs.snapshot_hooks.run_command") as mk:
+    with patch("sanity_gravity.hooks.snapshot.run_command") as mk:
         Orchestrator(bus, ctx.reporter).run(_SNAPSHOT_PHASES, ctx)
     assert mk.call_count == 0
     assert ctx.container_id == "proj-ag-xfce-ssh-1"

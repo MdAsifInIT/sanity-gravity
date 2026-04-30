@@ -211,8 +211,8 @@ def test_full_up_flow_dry_run_makes_no_subprocess_calls():
     from sanity_gravity.core.eventbus import EventBus  # noqa: PLC0415
     from sanity_gravity.core.orchestrator import (  # noqa: PLC0415
         Deps, PortRequest, UpContext, UpOrchestrator,
-        register_builtin_up_hooks,
     )
+    from sanity_gravity.hooks.up import register_builtin_up_hooks  # noqa: PLC0415
     from sanity_gravity.domain.tags import Tag  # noqa: PLC0415
 
     bus = EventBus()
