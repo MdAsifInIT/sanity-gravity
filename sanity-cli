@@ -1346,14 +1346,14 @@ def open_cmd(args):
     # No, 'up' logic runs with '0' env var, then queries 'docker port' to show info.
     # The container itself thinks it's 0? Yes.
     # So we must query `docker port` to find the real host port.
-    
-    compose_file_arg = f"-f {COMPOSE_FILE}"
-    # Just using base file usually works for port query if project name matches
 
+    # docker compose resolves the project by its label, no compose file needed.
+    # Passing -f to a non-existent docker-compose.yml worked accidentally for
+    # `port` (compose tolerates it) but broke `ps` in status() — see fix below.
     def resolve_port(service, internal):
         try:
             # We must use project name
-            out = run_command(f"docker compose -p {project_name} {compose_file_arg} port {service} {internal}", capture=True, check=False)
+            out = run_command(f"docker compose -p {project_name} port {service} {internal}", capture=True, check=False)
             if ":" in out:
                 return out.split(":")[-1]
         except subprocess.CalledProcessError as e:
@@ -1492,16 +1492,14 @@ def status(args):
         print_header(f"Sandbox Status ({project})")
         try:
             # We use 'docker compose ps' to get a nice table
-            # We need to find the compose file. Assuming it's in current dir as docker-compose.yml
-            # If the project was started from elsewhere, this might fail if we rely on the file for 'ps'
-            # But 'docker compose -p <name> ps' usually works if the project exists in docker engine
-            
-            # Note: 'docker compose ps' might require the compose file to be present to know the service definitions
-            # strictly speaking, but often works for listing. 
-            # Let's try 'docker ps' filtered by project for a more robust generic view if compose ps fails,
-            # but 'docker compose ps' is prettier.
-            
-            output = run_command(f"docker compose -p {project} -f {COMPOSE_FILE} ps -a", capture=True, check=False)
+            # docker compose resolves the project by its label, no compose
+            # file needed. The previous "-f docker-compose.yml" only worked
+            # before the modular tag system (PR #10) when a single compose
+            # file lived at the repo root; after the move to per-tag
+            # config/docker-compose.<tag>.yml the path is non-existent and
+            # `ps -a` silently returns empty -> "No containers running."
+            # even when containers are alive.
+            output = run_command(f"docker compose -p {project} ps -a", capture=True, check=False)
             if output:
                 print(output)
             else:
