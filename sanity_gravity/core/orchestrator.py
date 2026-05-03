@@ -105,10 +105,10 @@ _BUILD_PHASES: tuple[Phase, ...] = (
     Phase.BUILD_DONE,
 )
 
-_DOWN_PHASES: tuple[Phase, ...] = (
-    Phase.DOWN_BEFORE,
-    Phase.DOWN_DOCKER,
-    Phase.DOWN_AFTER,
+_LIFECYCLE_PHASES: tuple[Phase, ...] = (
+    Phase.LIFECYCLE_BEFORE,
+    Phase.LIFECYCLE_DOCKER,
+    Phase.LIFECYCLE_AFTER,
 )
 
 _SNAPSHOT_PHASES: tuple[Phase, ...] = (

@@ -19,7 +19,7 @@ from sanity_gravity.core.orchestrator import (  # noqa: E402
     CleanContext,
     DownContext,
     Orchestrator,
-    _DOWN_PHASES,
+    _LIFECYCLE_PHASES,
 )
 from sanity_gravity.core.reporter import Reporter  # noqa: E402
 from sanity_gravity.domain.phase import Phase  # noqa: E402
@@ -59,11 +59,11 @@ def _stub_lifecycle_helpers():
 def test_down_phase_sequence_runs_in_order():
     bus = EventBus()
     fired: list[Phase] = []
-    for ph in _DOWN_PHASES:
+    for ph in _LIFECYCLE_PHASES:
         bus.subscribe(ph, lambda ctx, p=ph: fired.append(p))
     ctx = _ctx()
-    Orchestrator(bus, ctx.reporter).run(_DOWN_PHASES, ctx)
-    assert fired == list(_DOWN_PHASES)
+    Orchestrator(bus, ctx.reporter).run(_LIFECYCLE_PHASES, ctx)
+    assert fired == list(_LIFECYCLE_PHASES)
 
 
 def test_down_enqueues_compose_down_action():
@@ -77,7 +77,7 @@ def test_down_enqueues_compose_down_action():
         def drain(self, actions, phase=None):
             captured.extend(actions)
 
-    Orchestrator(bus, ctx.reporter, executor=_Exec()).run(_DOWN_PHASES, ctx)
+    Orchestrator(bus, ctx.reporter, executor=_Exec()).run(_LIFECYCLE_PHASES, ctx)
     assert len(captured) == 1
     a = captured[0]
     assert isinstance(a, RunSubprocess)
@@ -96,7 +96,7 @@ def test_stop_action_uses_stop_verb():
         def drain(self, actions, phase=None):
             captured.extend(actions)
 
-    Orchestrator(bus, ctx.reporter, executor=_Exec()).run(_DOWN_PHASES, ctx)
+    Orchestrator(bus, ctx.reporter, executor=_Exec()).run(_LIFECYCLE_PHASES, ctx)
     assert captured[0].argv[-1] == "stop"
 
 
@@ -112,7 +112,7 @@ def test_down_with_check_existence_bails_when_project_missing():
         def drain(self, actions, phase=None):
             captured.extend(actions)
 
-    Orchestrator(bus, ctx.reporter, executor=_Exec()).run(_DOWN_PHASES, ctx)
+    Orchestrator(bus, ctx.reporter, executor=_Exec()).run(_LIFECYCLE_PHASES, ctx)
     assert captured == []
 
 
@@ -135,7 +135,7 @@ def test_clean_appends_extra_compose_args():
         def drain(self, actions, phase=None):
             captured.extend(actions)
 
-    Orchestrator(bus, ctx.reporter, executor=_Exec()).run(_DOWN_PHASES, ctx)
+    Orchestrator(bus, ctx.reporter, executor=_Exec()).run(_LIFECYCLE_PHASES, ctx)
     assert len(captured) == 1
     argv = captured[0].argv
     # Tail must be: down -v --rmi local --remove-orphans
@@ -165,6 +165,6 @@ def test_clean_cancelled_when_user_says_no(monkeypatch):
         def drain(self, actions, phase=None):
             captured.extend(actions)
 
-    Orchestrator(bus, ctx.reporter, executor=_Exec()).run(_DOWN_PHASES, ctx)
+    Orchestrator(bus, ctx.reporter, executor=_Exec()).run(_LIFECYCLE_PHASES, ctx)
     assert ctx.cancelled is True
     assert captured == []

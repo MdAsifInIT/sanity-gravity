@@ -2,10 +2,10 @@
 ``restart``, ``clean``).
 
 Phase split:
-- ``DOWN_BEFORE`` — for ``down``: verify the project exists; for ``clean``:
+- ``LIFECYCLE_BEFORE`` — for ``down``: verify the project exists; for ``clean``:
   prompt for confirmation. Always: resolve compose files + recover env.
-- ``DOWN_DOCKER`` — enqueue the ``docker compose <action>`` Action.
-- ``DOWN_AFTER`` — emit the success message keyed off the action verb.
+- ``LIFECYCLE_DOCKER`` — enqueue the ``docker compose <action>`` Action.
+- ``LIFECYCLE_AFTER`` — emit the success message keyed off the action verb.
 """
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def _project_compose_files() -> list[str]:
 
 
 def lifecycle_check_existence(ctx) -> None:
-    """DOWN_BEFORE/100: ``down`` only — bail if project missing."""
+    """LIFECYCLE_BEFORE/100: ``down`` only — bail if project missing."""
     if not ctx.check_existence:
         return
 
@@ -63,7 +63,7 @@ def lifecycle_check_existence(ctx) -> None:
 
 
 def lifecycle_clean_prompt(ctx) -> None:
-    """DOWN_BEFORE/50: ``clean`` only — interactive confirmation."""
+    """LIFECYCLE_BEFORE/50: ``clean`` only — interactive confirmation."""
     # CleanContext has a `force` attribute; plain DownContext does not.
     if not hasattr(ctx, "force"):
         return
@@ -83,7 +83,7 @@ def lifecycle_clean_prompt(ctx) -> None:
 
 
 def lifecycle_resolve_compose(ctx) -> None:
-    """DOWN_BEFORE/200: populate ctx.compose_files."""
+    """LIFECYCLE_BEFORE/200: populate ctx.compose_files."""
     if getattr(ctx, "project_exists", True) is False:
         return
     if getattr(ctx, "cancelled", False):
@@ -92,7 +92,7 @@ def lifecycle_resolve_compose(ctx) -> None:
 
 
 def lifecycle_recover_env(ctx) -> None:
-    """DOWN_BEFORE/300: recover environment from a running container."""
+    """LIFECYCLE_BEFORE/300: recover environment from a running container."""
     if getattr(ctx, "project_exists", True) is False:
         return
     if getattr(ctx, "cancelled", False):
@@ -113,7 +113,7 @@ def _emit_header(ctx) -> None:
 
 
 def lifecycle_compose_action(ctx) -> None:
-    """DOWN_DOCKER/100: enqueue ``docker compose -p <name> -f ... <action>``."""
+    """LIFECYCLE_DOCKER/100: enqueue ``docker compose -p <name> -f ... <action>``."""
     if getattr(ctx, "project_exists", True) is False:
         return
     if getattr(ctx, "cancelled", False):
@@ -140,7 +140,7 @@ def lifecycle_compose_action(ctx) -> None:
 
 
 def lifecycle_announce(ctx) -> None:
-    """DOWN_AFTER/100: success message keyed on action verb."""
+    """LIFECYCLE_AFTER/100: success message keyed on action verb."""
     if getattr(ctx, "project_exists", True) is False:
         return
     if getattr(ctx, "cancelled", False):
@@ -171,11 +171,11 @@ def register_builtin_lifecycle_hooks(bus: EventBus) -> None:
     from sanity_gravity.plugins.registry import default_registry
     default_registry()  # ensure plugin hooks.py modules are loaded
 
-    bus.subscribe(Phase.DOWN_BEFORE, lifecycle_clean_prompt, priority=50)
-    bus.subscribe(Phase.DOWN_BEFORE, lifecycle_check_existence, priority=100)
-    bus.subscribe(Phase.DOWN_BEFORE, lifecycle_resolve_compose, priority=200)
-    bus.subscribe(Phase.DOWN_BEFORE, lifecycle_recover_env, priority=300)
-    bus.subscribe(Phase.DOWN_DOCKER, lifecycle_compose_action, priority=100)
-    bus.subscribe(Phase.DOWN_AFTER, lifecycle_announce, priority=100)
+    bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_clean_prompt, priority=50)
+    bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_check_existence, priority=100)
+    bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_resolve_compose, priority=200)
+    bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_recover_env, priority=300)
+    bus.subscribe(Phase.LIFECYCLE_DOCKER, lifecycle_compose_action, priority=100)
+    bus.subscribe(Phase.LIFECYCLE_AFTER, lifecycle_announce, priority=100)
 
     get_default_bus().merge_into(bus)

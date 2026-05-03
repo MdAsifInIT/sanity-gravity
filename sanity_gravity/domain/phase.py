@@ -26,10 +26,13 @@ class Phase(StrEnum):
     BUILD_LAYER = "build.layer"
     BUILD_DONE = "build.done"
 
-    # lifecycle (down/stop/start/restart/clean) verbs (active in PR #7b)
-    DOWN_BEFORE = "down.before"
-    DOWN_DOCKER = "down.docker"
-    DOWN_AFTER = "down.after"
+    # lifecycle verbs share one phase sequence; the verb is carried on
+    # ctx.action ("down"/"stop"/"start"/"restart"); clean is "down" with
+    # extra_action_args. Phase names match the file naming
+    # (hooks/lifecycle.py, verbs/lifecycle.py, test_lifecycle_kernel.py).
+    LIFECYCLE_BEFORE = "lifecycle.before"
+    LIFECYCLE_DOCKER = "lifecycle.docker"
+    LIFECYCLE_AFTER = "lifecycle.after"
 
     # snapshot verb (active in PR #7b)
     SNAPSHOT_PLAN = "snapshot.plan"

@@ -79,7 +79,7 @@ def test_none_desktop_no_capabilities():
 
 def test_kasm_ports_and_compose():
     m = load_manifest(PLUGINS_DIR / "connectors" / "kasm" / "manifest.toml")
-    assert m.provides == ("graphical-remote",)
+    assert m.provides == ("remote-gui",)
     assert m.requires == ("display",)
     by_label = m.ports_by_label()
     assert by_label["http"] == PortSpec(

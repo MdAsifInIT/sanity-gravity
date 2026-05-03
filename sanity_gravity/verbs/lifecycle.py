@@ -1,8 +1,9 @@
 """``down`` / ``stop`` / ``start`` / ``restart`` / ``clean`` verbs.
 
-The phase loop ``down.before → down.docker → down.after`` is published
-by :class:`Orchestrator`; per-phase behaviour lives in
-:mod:`lifecycle_hooks`. ``clean`` reuses the same phase sequence with a
+The phase loop ``lifecycle.before → lifecycle.docker → lifecycle.after``
+is published by :class:`Orchestrator`; per-phase behaviour lives in
+:mod:`sanity_gravity.hooks.lifecycle`. ``clean`` reuses the same phase
+sequence with a
 ``CleanContext`` that adds a ``[y/N]`` prompt + extra docker-compose
 args (``-v --rmi local --remove-orphans``).
 
@@ -25,7 +26,7 @@ from sanity_gravity.core.orchestrator import (
     CleanContext,
     DownContext,
     Orchestrator,
-    _DOWN_PHASES,
+    _LIFECYCLE_PHASES,
 )
 from sanity_gravity.effects.actions import ActionFailedError
 from sanity_gravity.effects.executor import build_default_executor
@@ -131,7 +132,7 @@ def _run_lifecycle(ctx) -> None:
     executor = build_default_executor(ctx.reporter, dry_run=ctx.dry_run)
     atexit.register(executor.close)
     try:
-        Orchestrator(bus, ctx.reporter, executor=executor).run(_DOWN_PHASES, ctx)
+        Orchestrator(bus, ctx.reporter, executor=executor).run(_LIFECYCLE_PHASES, ctx)
     except ActionFailedError as e:
         import sys as _sys
         _sys.exit(e.result.exit_code or 1)
