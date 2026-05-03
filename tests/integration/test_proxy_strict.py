@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from sanity_gravity.infra.proxy_manager import ProxyManager
-from sanity_gravity.verbs import _compose_gen as cli
+from sanity_gravity.compose import generators as cli
 
 class TestProxyStrict(unittest.TestCase):
     def setUp(self):

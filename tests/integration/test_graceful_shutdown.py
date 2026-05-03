@@ -29,11 +29,9 @@ sys.path.insert(0, os.path.abspath(
 
 
 def _load_sanity_cli():
-    """Compatibility shim: return a façade with the legacy
-    ``generate_compose_for_tag`` callable so the rest of this file
-    continues to read ``cli.generate_compose_for_tag(...)``.
-    """
-    from sanity_gravity.verbs import _compose_gen as cg
+    """Return the compose-generator module so callers can keep reading
+    ``cli.generate_compose_for_tag(...)``."""
+    from sanity_gravity.compose import generators as cg
     return cg
 
 

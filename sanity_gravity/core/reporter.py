@@ -37,6 +37,7 @@ from sanity_gravity.events import (
     LayerBuilding,
     LayerBuilt,
     Prompt,
+    RunStarted,
     Success,
     Warning,
     WouldExecute,
@@ -75,7 +76,9 @@ class AnsiSink:
 
     def consume(self, event: Event) -> None:
         out = self._out
-        if isinstance(event, Header):
+        if isinstance(event, RunStarted):
+            out.write(f"{_HEADER}{_BOLD}>>> run-id: {event.run_id}{_ENDC}\n")
+        elif isinstance(event, Header):
             out.write(f"{_HEADER}{_BOLD}>>> {event.message}{_ENDC}\n")
         elif isinstance(event, Success):
             out.write(f"{_OKGREEN}✔ {event.message}{_ENDC}\n")
@@ -272,18 +275,38 @@ class FileSink:
             pass
 
 
+_DEFAULT_RUNS_BASE = Path.home() / ".cache" / "sanity-gravity" / "runs"
+
+
 class Reporter:
-    """Builds events with run_id/timestamp and fans them out to sinks."""
+    """Builds events with run_id/timestamp and fans them out to sinks.
+
+    Owns the per-run identity (``run_id``) and the per-run directory
+    layout (``run_dir``) so callers never have to read ``run_id`` off
+    the reporter and rebuild the path themselves.
+    """
 
     def __init__(
         self,
         sinks: Iterable[Sink] | None = None,
         run_id: str | None = None,
+        base_dir: Path | None = None,
     ) -> None:
         self.run_id = run_id or uuid.uuid4().hex[:8]
+        self.base_dir = base_dir or _DEFAULT_RUNS_BASE
         self.sinks: list[Sink] = list(sinks) if sinks else []
 
     # -- core API -----------------------------------------------------
+
+    @property
+    def run_dir(self) -> Path:
+        """The on-disk directory where this run's artifacts live.
+
+        Single source of truth for the per-run path: FileSink's events
+        log, the executor's actions log, postmortem compose snapshots,
+        etc. all live under here.
+        """
+        return self.base_dir / self.run_id
 
     def emit(self, event: Event) -> None:
         for sink in self.sinks:
@@ -294,10 +317,32 @@ class Reporter:
                     f"warning: sink {type(sink).__name__} failed: {exc}\n"
                 )
 
+    def emit_now(
+        self,
+        event_cls: type[Event],
+        *,
+        level: str = "info",
+        phase: str | None = None,
+        **payload,
+    ) -> None:
+        """Stamp ``ts``/``run_id``/``phase``/``level`` and emit.
+
+        Lets callers (e.g. the Executor) construct domain-specific events
+        without having to read ``run_id`` off the reporter and feed it
+        back in. The reporter knows its own identity.
+        """
+        self.emit(event_cls(**payload, **self._stamp(level, phase=phase)))
+
     # -- convenience builders ----------------------------------------
 
-    def _stamp(self, level: str) -> dict:
-        return {"ts": time.time(), "run_id": self.run_id, "phase": None, "level": level}
+    def _stamp(self, level: str, *, phase: str | None = None) -> dict:
+        return {"ts": time.time(), "run_id": self.run_id, "phase": phase, "level": level}
+
+    def start(self) -> None:
+        """Emit the run-started banner. AnsiSink renders it as the legacy
+        ``>>> run-id: ...`` line; structured sinks see a ``RunStarted``
+        event with the run_id in its own field."""
+        self.emit(RunStarted(**self._stamp("header")))
 
     def header(self, message: str) -> None:
         self.emit(Header(message=message, **self._stamp("header")))
@@ -363,4 +408,4 @@ def build_default_reporter(
     else:
         sinks.append(AnsiSink(sys.stdout))
     sinks.append(FileSink(run_id, base=base))
-    return Reporter(sinks=sinks, run_id=run_id)
+    return Reporter(sinks=sinks, run_id=run_id, base_dir=base)

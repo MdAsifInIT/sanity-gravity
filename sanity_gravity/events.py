@@ -31,6 +31,17 @@ class Event:
 
 
 @dataclass(frozen=True)
+class RunStarted(Event):
+    """Marks the beginning of a run.
+
+    Carries no extra payload — the base Event already exposes ``run_id``
+    and ``ts``, which is all consumers need. Structured sinks emit it as
+    ``{"type": "RunStarted", "run_id": ...}``; the AnsiSink renders it
+    as the legacy ``>>> run-id: ...`` banner.
+    """
+
+
+@dataclass(frozen=True)
 class Header(Event):
     """A section header (replaces ``print_header``)."""
 

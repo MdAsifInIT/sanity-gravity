@@ -42,6 +42,13 @@ class CaptureReporter:
     def emit(self, event):
         self.events.append(event)
 
+    def emit_now(self, event_cls, *, level="info", phase=None, **payload):
+        # Match Reporter.emit_now: stamp ts/run_id/phase/level on the
+        # event so executor tests don't have to plumb them through.
+        self.events.append(event_cls(
+            ts=0.0, run_id=self.run_id, phase=phase, level=level, **payload,
+        ))
+
 
 class FakeRuntime:
     """Fake runtime that returns pre-canned ActionResult objects."""

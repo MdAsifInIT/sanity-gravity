@@ -83,10 +83,6 @@ class UpContext:
         return str(self.tag)
 
     @property
-    def run_id(self) -> str:
-        return getattr(self.reporter, "run_id", "")
-
-    @property
     def container_name(self) -> str:
         return f"{self.project}-{self.service_name}-1"
 
@@ -208,10 +204,6 @@ class BuildContext:
         self.actions.clear()
         return out
 
-    @property
-    def run_id(self) -> str:
-        return getattr(self.reporter, "run_id", "")
-
 
 @dataclass
 class DownContext:
@@ -234,10 +226,6 @@ class DownContext:
         out = list(self.actions)
         self.actions.clear()
         return out
-
-    @property
-    def run_id(self) -> str:
-        return getattr(self.reporter, "run_id", "")
 
 
 @dataclass
@@ -266,7 +254,3 @@ class SnapshotContext:
         out = list(self.actions)
         self.actions.clear()
         return out
-
-    @property
-    def run_id(self) -> str:
-        return getattr(self.reporter, "run_id", "")

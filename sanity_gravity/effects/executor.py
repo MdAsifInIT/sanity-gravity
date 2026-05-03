@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import json
 import sys
-import time
-import uuid
 from pathlib import Path
 from typing import IO, Iterable
 
@@ -35,10 +33,6 @@ from sanity_gravity.events import (
 
 
 _DRY_RUN_RESULT = ActionResult(exit_code=0, duration_ms=0)
-
-
-def _now_ts() -> float:
-    return time.time()
 
 
 class Executor:
@@ -63,7 +57,6 @@ class Executor:
     # -- public API ---------------------------------------------------
 
     def run(self, action: Action, *, phase=None) -> ActionResult:
-        run_id = getattr(self.reporter, "run_id", "")
         phase_str = str(phase.value) if phase is not None and hasattr(phase, "value") else (
             str(phase) if phase is not None else None
         )
@@ -74,20 +67,20 @@ class Executor:
             argv = action.explain()
 
         if self.dry_run:
-            self.reporter.emit(WouldExecute(
-                ts=_now_ts(), run_id=run_id, phase=phase_str, level="info",
+            self.reporter.emit_now(
+                WouldExecute, phase=phase_str,
                 explain_str=action.explain(),
                 action_type=type(action).__name__,
-            ))
+            )
             self.history.append((action, _DRY_RUN_RESULT))
             self._append_actions_log(action, _DRY_RUN_RESULT, phase_str, dry=True)
             return _DRY_RUN_RESULT
 
-        self.reporter.emit(ActionStarted(
-            ts=_now_ts(), run_id=run_id, phase=phase_str, level="info",
+        self.reporter.emit_now(
+            ActionStarted, phase=phase_str,
             action_type=type(action).__name__,
             argv=argv,
-        ))
+        )
         try:
             result = action.execute(self.runtime)
         except FileNotFoundError as exc:
@@ -100,26 +93,26 @@ class Executor:
         self.history.append((action, result))
         self._append_actions_log(action, result, phase_str, dry=False)
 
-        self.reporter.emit(ActionFinished(
-            ts=_now_ts(), run_id=run_id, phase=phase_str, level="info",
+        self.reporter.emit_now(
+            ActionFinished, phase=phase_str,
             action_type=type(action).__name__,
             exit_code=result.exit_code,
             duration_ms=result.duration_ms,
-        ))
+        )
 
         check = getattr(action, "check", True)
         if check and result.exit_code != 0:
             stderr_tail = (result.stderr or "").splitlines()
             tail = "\n             ".join(stderr_tail[-5:]) if stderr_tail else ""
-            self.reporter.emit(ActionFailed(
-                ts=_now_ts(), run_id=run_id, phase=phase_str, level="error",
+            self.reporter.emit_now(
+                ActionFailed, level="error", phase=phase_str,
                 action_type=type(action).__name__,
                 argv=argv,
                 exit_code=result.exit_code,
                 stderr_tail=tail,
                 hint=None,
                 explain_str=action.explain(),
-            ))
+            )
             raise ActionFailedError(action, result, phase=phase_str)
         return result
 
@@ -187,11 +180,18 @@ def build_default_executor(
     dry_run: bool = False,
     base: Path | None = None,
 ) -> Executor:
-    """Construct an Executor with a real :class:`SystemRuntime` and a
-    ``run_dir`` keyed by the reporter's ``run_id`` (matching FileSink)."""
-    run_id = getattr(reporter, "run_id", uuid.uuid4().hex[:8])
-    base_dir = base or (Path.home() / ".cache" / "sanity-gravity" / "runs")
-    run_dir = base_dir / run_id
+    """Construct an Executor with a real :class:`SystemRuntime`.
+
+    The executor's ``run_dir`` is whatever the reporter says — there is
+    one source of truth for per-run paths, and that source is the
+    reporter. ``base`` is honored for tests that override the reporter's
+    base via the same mechanism, but in production both default to
+    ``~/.cache/sanity-gravity/runs/<run_id>``.
+    """
+    if base is not None:
+        run_dir = base / reporter.run_id
+    else:
+        run_dir = reporter.run_dir
     return Executor(
         runtime=SystemRuntime(), reporter=reporter,
         dry_run=dry_run, run_dir=run_dir,

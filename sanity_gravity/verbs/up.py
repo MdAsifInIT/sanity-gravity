@@ -12,7 +12,6 @@ import os
 import shutil
 import socket
 import sys
-from pathlib import Path
 
 from sanity_gravity.cli.io import (
     get_reporter,
@@ -147,12 +146,8 @@ def up(args):
         print_error(str(e))
         sys.exit(1)
     except ActionFailedError as e:
-        run_dir = (
-            Path.home() / ".cache" / "sanity-gravity" / "runs"
-            / ctx.reporter.run_id
-        )
         if reporter is not None:
-            reporter.info(f"Detailed run state at: {run_dir}")
+            reporter.info(f"Detailed run state at: {ctx.reporter.run_dir}")
         sys.exit(e.result.exit_code or 1)
     except SystemExit:
         raise
@@ -160,10 +155,7 @@ def up(args):
     # Persist a copy of the compose file(s) for postmortem.
     if executor is not None and not dry_run and ctx.compose_files:
         try:
-            run_dir = (
-                Path.home() / ".cache" / "sanity-gravity" / "runs"
-                / ctx.reporter.run_id
-            )
+            run_dir = ctx.reporter.run_dir
             run_dir.mkdir(parents=True, exist_ok=True)
             primary = ctx.compose_files[0]
             if os.path.exists(primary):
