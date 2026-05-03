@@ -71,7 +71,7 @@ class UpContext:
     def drain_actions(self) -> list[Action]:
         """Pop and return the queued actions, leaving the list empty.
 
-        Called by :class:`UpOrchestrator` after each phase publish so the
+        Called by :class:`Orchestrator` after each phase publish so the
         Executor runs them in order before the next phase begins.
         """
         out = list(self.actions)
@@ -163,18 +163,6 @@ class Orchestrator:
                 pending = ctx.drain_actions()
                 if pending:
                     self.executor.drain(pending, phase=phase)
-
-
-class UpOrchestrator(Orchestrator):
-    """Backward-compatible wrapper that hardcodes the ``up`` phase list.
-
-    Kept so existing callers and tests that pass a ``UpContext`` straight
-    to ``.run(ctx)`` keep working. New verbs use :class:`Orchestrator`
-    directly with their own phase sequence.
-    """
-
-    def run(self, ctx: UpContext) -> None:  # type: ignore[override]
-        super().run(_UP_PHASES, ctx)
 
 
 # ---------------------------------------------------------------------------

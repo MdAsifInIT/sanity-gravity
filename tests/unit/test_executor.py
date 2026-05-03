@@ -214,10 +214,10 @@ def test_executor_handles_writefile_makedirs():
 
 
 def test_full_up_flow_dry_run_makes_no_subprocess_calls():
-    """A dry-run UpOrchestrator pass should not invoke any subprocess."""
+    """A dry-run up flow should not invoke any subprocess."""
     from sanity_gravity.core.eventbus import EventBus  # noqa: PLC0415
     from sanity_gravity.core.orchestrator import (  # noqa: PLC0415
-        Deps, PortRequest, UpContext, UpOrchestrator,
+        Deps, Orchestrator, PortRequest, UpContext, _UP_PHASES,
     )
     from sanity_gravity.hooks.up import register_builtin_up_hooks  # noqa: PLC0415
     from sanity_gravity.domain.tags import Tag  # noqa: PLC0415
@@ -267,7 +267,7 @@ def test_full_up_flow_dry_run_makes_no_subprocess_calls():
 
     rt = FakeRuntime()
     ex = Executor(runtime=rt, reporter=rep, dry_run=True)
-    UpOrchestrator(bus, rep, executor=ex).run(ctx)
+    Orchestrator(bus, rep, executor=ex).run(_UP_PHASES, ctx)
 
     # No subprocess calls under dry-run.
     assert rt.subprocess_calls == []

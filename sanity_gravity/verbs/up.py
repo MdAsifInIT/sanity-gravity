@@ -2,8 +2,8 @@
 
 The phase loop (``up.validate`` → ``up.compose`` → ``up.port_alloc`` →
 ``up.docker`` → ``up.provision`` → ``up.announce``) is published by
-:class:`UpOrchestrator`; per-phase behaviour lives in builtin hooks
-registered on a fresh :class:`EventBus` for this run.
+:class:`Orchestrator` against ``_UP_PHASES``; per-phase behaviour lives
+in builtin hooks registered on a fresh :class:`EventBus` for this run.
 """
 from __future__ import annotations
 
@@ -28,7 +28,8 @@ from sanity_gravity.core.orchestrator import (
     Deps,
     PortRequest,
     UpContext,
-    UpOrchestrator,
+    Orchestrator,
+    _UP_PHASES,
 )
 from sanity_gravity.core.eventbus import EventBus
 from sanity_gravity.hooks.up import register_builtin_up_hooks
@@ -141,7 +142,7 @@ def up(args):
         atexit.register(executor.close)
 
     try:
-        UpOrchestrator(bus, ctx.reporter, executor=executor).run(ctx)
+        Orchestrator(bus, ctx.reporter, executor=executor).run(_UP_PHASES, ctx)
     except ValueError as e:
         print_error(str(e))
         sys.exit(1)

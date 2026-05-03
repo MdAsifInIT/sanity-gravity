@@ -23,9 +23,9 @@ sys.path.insert(0, str(_REPO_ROOT))
 from sanity_gravity.core.eventbus import EventBus  # noqa: E402
 from sanity_gravity.core.orchestrator import (  # noqa: E402
     Deps,
+    Orchestrator,
     PortRequest,
     UpContext,
-    UpOrchestrator,
     _UP_PHASES,
 )
 from sanity_gravity.hooks.up import register_builtin_up_hooks  # noqa: E402
@@ -120,7 +120,7 @@ def test_orchestrator_runs_phases_in_documented_order():
 
     deps, _ = _make_deps()
     ctx = _make_ctx(deps)
-    UpOrchestrator(bus, ctx.reporter).run(ctx)
+    Orchestrator(bus, ctx.reporter).run(_UP_PHASES, ctx)
 
     assert fired == list(_UP_PHASES)
 
@@ -142,7 +142,7 @@ def test_orchestrator_ctx_mutations_propagate():
 
     deps, _ = _make_deps()
     ctx = _make_ctx(deps)
-    UpOrchestrator(bus, ctx.reporter).run(ctx)
+    Orchestrator(bus, ctx.reporter).run(_UP_PHASES, ctx)
     assert Path("/tmp/extra.yml") in seen
 
 
@@ -157,7 +157,7 @@ def test_full_up_flow_invokes_expected_deps_in_order():
 
     deps, calls = _make_deps()
     ctx = _make_ctx(deps)
-    UpOrchestrator(bus, ctx.reporter).run(ctx)
+    Orchestrator(bus, ctx.reporter).run(_UP_PHASES, ctx)
 
     # PR #5: ``docker compose up`` is now enqueued as an Action rather
     # than calling ``run_command`` directly. ``sync_config`` still runs
@@ -186,7 +186,7 @@ def test_compose_files_collected_from_compose_phase():
     # Replace generate_resource_compose to return a file
     deps.generate_resource_compose = lambda c, m, s: "config/resources.yml"
 
-    UpOrchestrator(bus, ctx.reporter).run(ctx)
+    Orchestrator(bus, ctx.reporter).run(_UP_PHASES, ctx)
 
     paths = [str(p) for p in ctx.compose_files]
     assert "config/docker-compose.tag.yml" in paths
@@ -217,7 +217,7 @@ def test_port_alloc_custom_project_switches_defaults_to_ephemeral():
 
     deps, _ = _make_deps()
     ctx = _make_ctx(deps, project="my-other-project")
-    UpOrchestrator(bus, ctx.reporter).run(ctx)
+    Orchestrator(bus, ctx.reporter).run(_UP_PHASES, ctx)
     # All four defaults should have flipped to "0".
     assert snap == {"ssh": "0", "kasm": "0", "vnc": "0", "novnc": "0"}
 
@@ -229,7 +229,7 @@ def test_port_alloc_default_project_keeps_free_ports_explicit():
 
     deps, _ = _make_deps()  # is_port_in_use returns False
     ctx = _make_ctx(deps)
-    UpOrchestrator(bus, ctx.reporter).run(ctx)
+    Orchestrator(bus, ctx.reporter).run(_UP_PHASES, ctx)
     assert snap["ssh"] == "2222"
     assert snap["kasm"] == "8444"
 
@@ -242,7 +242,7 @@ def test_port_alloc_default_project_busy_port_falls_back_to_ephemeral():
     busy = {2222: True, 8444: False, 5901: False, 6901: False}
     deps, _ = _make_deps(is_port_in_use=lambda p: busy.get(p, False))
     ctx = _make_ctx(deps)
-    UpOrchestrator(bus, ctx.reporter).run(ctx)
+    Orchestrator(bus, ctx.reporter).run(_UP_PHASES, ctx)
     assert snap["ssh"] == "0"
     assert snap["kasm"] == "8444"
 
@@ -254,7 +254,7 @@ def test_explicit_port_flag_disables_auto_swap():
 
     deps, _ = _make_deps()
     ctx = _make_ctx(deps, project="my-other-project", ssh_explicit=True)
-    UpOrchestrator(bus, ctx.reporter).run(ctx)
+    Orchestrator(bus, ctx.reporter).run(_UP_PHASES, ctx)
     # Custom project would normally flip ssh to "0"; explicit flag pins it.
     assert snap["ssh"] == "2222"
     assert snap["kasm"] == "0"
@@ -275,7 +275,7 @@ def test_resolve_ephemeral_only_runs_when_port_is_zero():
 
     deps, _ = _make_deps(run_command=_run)
     ctx = _make_ctx(deps, project="other")  # forces ephemeral
-    UpOrchestrator(bus, ctx.reporter).run(ctx)
+    Orchestrator(bus, ctx.reporter).run(_UP_PHASES, ctx)
     # We requested kasm-connector; expect lookups for 22 + 8444.
     looked_up = [cmd[-1] for cmd in port_calls]
     assert "22" in looked_up
@@ -288,7 +288,7 @@ def test_announce_emits_access_for_active_connector():
 
     deps, _ = _make_deps()
     ctx = _make_ctx(deps, connector="ssh")
-    UpOrchestrator(bus, ctx.reporter).run(ctx)
+    Orchestrator(bus, ctx.reporter).run(_UP_PHASES, ctx)
     access_calls = [c for c in ctx.reporter.calls if c[0] == "access"]
     assert len(access_calls) == 1
     kind, args, kwargs = access_calls[0]
@@ -312,7 +312,7 @@ def test_announce_in_dry_run_summarises_without_success_or_access():
     deps, _ = _make_deps()
     ctx = _make_ctx(deps, project="other")  # forces ephemeral on kasm/ssh
     ctx.dry_run = True
-    UpOrchestrator(bus, ctx.reporter).run(ctx)
+    Orchestrator(bus, ctx.reporter).run(_UP_PHASES, ctx)
 
     kinds = [c[0] for c in ctx.reporter.calls]
     assert "success" not in kinds
@@ -341,7 +341,7 @@ def test_validate_inputs_propagates_value_error():
     deps, _ = _make_deps(validate_project_name=_bad)
     ctx = _make_ctx(deps)
     with pytest.raises(ValueError, match="invalid project"):
-        UpOrchestrator(bus, ctx.reporter).run(ctx)
+        Orchestrator(bus, ctx.reporter).run(_UP_PHASES, ctx)
 
 
 def test_phase_tick_lines_emitted_to_reporter():
@@ -350,7 +350,7 @@ def test_phase_tick_lines_emitted_to_reporter():
 
     deps, _ = _make_deps()
     ctx = _make_ctx(deps)
-    UpOrchestrator(bus, ctx.reporter).run(ctx)
+    Orchestrator(bus, ctx.reporter).run(_UP_PHASES, ctx)
 
     info_messages = [
         c[1][0] for c in ctx.reporter.calls if c[0] == "info" and c[1]
