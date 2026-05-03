@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 
 from sanity_gravity.cli.registry import DEFAULT_TAG
-from sanity_gravity.verbs.build import build, install
+from sanity_gravity.verbs.build import build
 from sanity_gravity.verbs.check import check_prereqs
 from sanity_gravity.verbs.ide import ide_cmd
 from sanity_gravity.verbs.lifecycle import clean, down, restart, start, stop
@@ -102,12 +102,6 @@ def build_parser():
     p_build.add_argument("--json", dest="json_output", action="store_true",
                          help="Output in JSON format (for --list-intermediates)")
     p_build.set_defaults(func=build)
-
-    # install (alias)
-    p_install = subparsers.add_parser("install", help="Install/Build sandbox environment")
-    p_install.add_argument("variant", nargs="*",
-                           help="Tag to install (default: all)", default=["all"])
-    p_install.set_defaults(func=install)
 
     # up
     p_up = subparsers.add_parser(

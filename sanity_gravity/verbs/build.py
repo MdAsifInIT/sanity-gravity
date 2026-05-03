@@ -1,4 +1,4 @@
-"""``build`` / ``install`` verbs: kernel-driven layered Docker image build.
+"""``build`` verb: kernel-driven layered Docker image build.
 
 The phase loop ``build.plan → build.layer → build.done`` is published by
 :class:`Orchestrator`; per-phase behaviour lives in :mod:`build_hooks`.
@@ -118,11 +118,6 @@ def build(args):
         Orchestrator(bus, reporter, executor=executor).run(_BUILD_PHASES, ctx)
     except ActionFailedError as e:
         sys.exit(e.result.exit_code or 1)
-
-
-def install(args):
-    """Alias for build (in future may pull images from a registry)."""
-    build(args)
 
 
 def explain_build(args):
