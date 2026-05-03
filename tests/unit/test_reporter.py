@@ -150,9 +150,9 @@ def test_reporter_close_propagates_to_sinks(tmp_path):
     assert file_sink._fp is None
 
 
-def test_cli_list_visual_parity_only_run_id_header():
+def test_cli_list_visual_parity_only_recording_banner():
     """Legacy ``list`` output must be byte-identical except for the new
-    ``run-id:`` header line emitted at startup."""
+    ``Recording to …/runs/<id>/`` banner emitted at startup."""
     repo = _REPO_ROOT
     res = subprocess.run(
         [str(repo / "sanity-cli"), "list"],
@@ -163,8 +163,9 @@ def test_cli_list_visual_parity_only_run_id_header():
     )
     assert res.returncode == 0
     lines = res.stdout.splitlines()
-    # First line must be the run-id header; the rest should be the
-    # familiar dimension matrix output.
-    assert lines and "run-id:" in lines[0]
+    # First line is the self-explanatory recording banner; the rest is
+    # the familiar dimension matrix output.
+    assert lines, "no output captured"
+    assert "Recording to" in lines[0] and "/runs/" in lines[0]
     assert any("Dimension Matrix" in ln for ln in lines)
     assert any("ag-xfce-kasm" in ln for ln in lines)

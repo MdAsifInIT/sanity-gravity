@@ -77,7 +77,11 @@ class AnsiSink:
     def consume(self, event: Event) -> None:
         out = self._out
         if isinstance(event, RunStarted):
-            out.write(f"{_HEADER}{_BOLD}>>> run-id: {event.run_id}{_ENDC}\n")
+            # Self-explanatory startup line: tells the user *where* this
+            # invocation's events/actions/compose copies will land, so a
+            # later "go look at the logs" instruction is already satisfied.
+            run_dir = _DEFAULT_RUNS_BASE / event.run_id
+            out.write(f"{_OKCYAN}ℹ Recording to {_short_path(run_dir)}/{_ENDC}\n")
         elif isinstance(event, Header):
             out.write(f"{_HEADER}{_BOLD}>>> {event.message}{_ENDC}\n")
         elif isinstance(event, Success):
@@ -278,6 +282,22 @@ class FileSink:
 _DEFAULT_RUNS_BASE = Path.home() / ".cache" / "sanity-gravity" / "runs"
 
 
+def _short_path(p: Path) -> str:
+    """Render ``p`` with ``~`` substituted for the user's home directory.
+
+    Used by AnsiSink so the startup banner shows a copy-pasteable but
+    visually compact path. Falls back to the full absolute path when ``p``
+    is not under ``$HOME``.
+    """
+    s = str(p)
+    home = str(Path.home())
+    if s == home:
+        return "~"
+    if s.startswith(home + "/"):
+        return "~" + s[len(home):]
+    return s
+
+
 class Reporter:
     """Builds events with run_id/timestamp and fans them out to sinks.
 
@@ -339,9 +359,10 @@ class Reporter:
         return {"ts": time.time(), "run_id": self.run_id, "phase": phase, "level": level}
 
     def start(self) -> None:
-        """Emit the run-started banner. AnsiSink renders it as the legacy
-        ``>>> run-id: ...`` line; structured sinks see a ``RunStarted``
-        event with the run_id in its own field."""
+        """Emit the run-started banner. AnsiSink renders it as
+        ``ℹ Recording to ~/.cache/sanity-gravity/runs/<id>/``;
+        structured sinks see a ``RunStarted`` event with the run_id in
+        its own field."""
         self.emit(RunStarted(**self._stamp("header")))
 
     def header(self, message: str) -> None:
