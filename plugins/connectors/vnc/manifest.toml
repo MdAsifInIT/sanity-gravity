@@ -5,7 +5,7 @@ kind = "connector"
 api_version = "1"
 
 [capabilities]
-provides = ["graphical-remote"]
+provides = ["remote-gui"]
 requires = ["display"]
 
 [build]

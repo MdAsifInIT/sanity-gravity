@@ -10,7 +10,7 @@ api_version = "1"
 # without caring which specific protocol provides it. The current
 # capability solver only makes `display` load-bearing — these provides
 # strings are descriptive labels reserved for forward-compat.
-provides = ["graphical-remote"]
+provides = ["remote-gui"]
 requires = ["display"]
 
 [build]
