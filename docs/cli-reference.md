@@ -32,10 +32,6 @@ Build sandbox images. Defaults to building all 11 valid tags.
 | `--list-intermediates` | Print intermediate image names and exit |
 | `--json` | Output in JSON format (with `--list-intermediates`) |
 
-### `install [tag...]`
-
-Alias for `build`.
-
 ### `list`
 
 Print all valid tags and the dimension matrix.
