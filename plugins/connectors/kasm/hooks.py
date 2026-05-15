@@ -12,17 +12,18 @@ so a kasm-specific hook must guard its own tag.
 """
 from __future__ import annotations
 
-from sanity_gravity.core.eventbus import on
+from sanity_gravity.core.eventbus import PRIORITY_BUILTIN_SECOND, on
 from sanity_gravity.domain.phase import Phase
 
 
-@on(Phase.UP_ANNOUNCE, priority=200, name="kasm_security_tip")
+@on(Phase.UP_ANNOUNCE, priority=PRIORITY_BUILTIN_SECOND, name="kasm_security_tip")
 def _kasm_security_tip(ctx) -> None:
     """Emit a follow-up info line after the standard AccessInfo block.
 
-    Priority 200 places this strictly after the builtin announce hook
-    (priority 100), so the tip appears beneath the access details.
-    Skipped on dry-run since no container actually started.
+    Using ``PRIORITY_BUILTIN_SECOND`` (200) places this strictly after
+    the builtin announce hook (``PRIORITY_BUILTIN_FIRST`` = 100), so the
+    tip appears beneath the access details. Skipped on dry-run since no
+    container actually started.
     """
     if getattr(ctx, "dry_run", False):
         return

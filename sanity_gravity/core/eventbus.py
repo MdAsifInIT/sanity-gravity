@@ -28,6 +28,36 @@ from sanity_gravity.domain.phase import Phase
 HookFn = Callable[[Any], None]
 
 
+# ---------------------------------------------------------------------------
+# Priority convention
+# ---------------------------------------------------------------------------
+#
+# Hooks within a phase fire in priority order (lower first). Builtin hooks
+# space their priorities at 100 / 200 / 300 so plugin hooks can slot in
+# between, before, or after without renumbering. The convention:
+#
+#   < 100        : run BEFORE the first builtin (sanity-check, gate, abort)
+#   == 100       : first builtin slot (the canonical action of the phase)
+#   100 < p < 200: between first and second builtin (rare)
+#   == 200       : second builtin (post-action observers)
+#   == 300       : third builtin (cleanup / announce)
+#   > 300        : tail of the phase (audit, telemetry)
+#
+# Plugin authors should use these as anchor points. The constants are
+# exported so plugin hooks.py modules can write
+#
+#     @on(Phase.UP_ANNOUNCE, priority=PRIORITY_AFTER_FIRST)
+#
+# instead of hand-rolling integer literals.
+
+PRIORITY_BEFORE_BUILTIN: int = 50
+PRIORITY_BUILTIN_FIRST: int = 100
+PRIORITY_AFTER_FIRST: int = 150
+PRIORITY_BUILTIN_SECOND: int = 200
+PRIORITY_BUILTIN_THIRD: int = 300
+PRIORITY_TAIL: int = 500
+
+
 @dataclass(frozen=True)
 class Hook:
     """A single subscription. ``name`` is for debugging only.
