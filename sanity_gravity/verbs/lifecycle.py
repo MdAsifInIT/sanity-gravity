@@ -12,7 +12,6 @@ and ``get_project_env`` — shared with ``upgrade`` and ``sync_config``.
 """
 from __future__ import annotations
 
-import atexit
 import subprocess
 
 from sanity_gravity.cli.io import (
@@ -130,12 +129,14 @@ def _run_lifecycle(ctx) -> None:
     bus = EventBus()
     register_builtin_lifecycle_hooks(bus)
     executor = build_default_executor(ctx.reporter, dry_run=ctx.dry_run)
-    atexit.register(executor.close)
     try:
-        Orchestrator(bus, ctx.reporter, executor=executor).run(_LIFECYCLE_PHASES, ctx)
-    except ActionFailedError as e:
-        import sys as _sys
-        _sys.exit(e.result.exit_code or 1)
+        try:
+            Orchestrator(bus, ctx.reporter, executor=executor).run(_LIFECYCLE_PHASES, ctx)
+        except ActionFailedError as e:
+            import sys as _sys
+            _sys.exit(e.result.exit_code or 1)
+    finally:
+        executor.close()
 
 
 def _make_down_ctx(args, action: str, *, check_existence: bool) -> DownContext:

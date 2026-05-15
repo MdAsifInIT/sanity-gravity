@@ -6,7 +6,6 @@ published by :class:`Orchestrator`; per-phase behaviour lives in
 """
 from __future__ import annotations
 
-import atexit
 import sys
 
 from sanity_gravity.cli.io import get_reporter
@@ -35,12 +34,14 @@ def snapshot_cmd(args):
     bus = EventBus()
     register_builtin_snapshot_hooks(bus)
     executor = build_default_executor(reporter, dry_run=ctx.dry_run)
-    atexit.register(executor.close)
 
     try:
-        Orchestrator(bus, reporter, executor=executor).run(_SNAPSHOT_PHASES, ctx)
-    except ActionFailedError as e:
-        sys.exit(e.result.exit_code or 1)
+        try:
+            Orchestrator(bus, reporter, executor=executor).run(_SNAPSHOT_PHASES, ctx)
+        except ActionFailedError as e:
+            sys.exit(e.result.exit_code or 1)
+    finally:
+        executor.close()
 
 
 def explain_snapshot(args):

@@ -7,7 +7,6 @@ in builtin hooks registered on a fresh :class:`EventBus` for this run.
 """
 from __future__ import annotations
 
-import atexit
 import os
 import shutil
 import socket
@@ -139,30 +138,37 @@ def up(args):
     executor = None
     if build_default_executor is not None:
         executor = build_default_executor(ctx.reporter, dry_run=dry_run)
-        atexit.register(executor.close)
 
+    # The action log is the verb's audit trail. Closing it via atexit was
+    # fragile (ordering depends on the Python version and other registered
+    # callbacks); a try/finally guarantees flush even on unhandled
+    # exceptions before the interpreter unwinds.
     try:
-        Orchestrator(bus, ctx.reporter, executor=executor).run(_UP_PHASES, ctx)
-    except ValueError as e:
-        print_error(str(e))
-        sys.exit(1)
-    except ActionFailedError as e:
-        if reporter is not None:
-            reporter.info(f"Detailed run state at: {ctx.reporter.run_dir}")
-        sys.exit(e.result.exit_code or 1)
-    except SystemExit:
-        raise
-
-    # Persist a copy of the compose file(s) for postmortem.
-    if executor is not None and not dry_run and ctx.compose_files:
         try:
-            run_dir = ctx.reporter.run_dir
-            run_dir.mkdir(parents=True, exist_ok=True)
-            primary = ctx.compose_files[0]
-            if os.path.exists(primary):
-                shutil.copy2(primary, run_dir / "compose.yml")
-        except OSError:
-            pass  # best-effort
+            Orchestrator(bus, ctx.reporter, executor=executor).run(_UP_PHASES, ctx)
+        except ValueError as e:
+            print_error(str(e))
+            sys.exit(1)
+        except ActionFailedError as e:
+            if reporter is not None:
+                reporter.info(f"Detailed run state at: {ctx.reporter.run_dir}")
+            sys.exit(e.result.exit_code or 1)
+        except SystemExit:
+            raise
+
+        # Persist a copy of the compose file(s) for postmortem.
+        if executor is not None and not dry_run and ctx.compose_files:
+            try:
+                run_dir = ctx.reporter.run_dir
+                run_dir.mkdir(parents=True, exist_ok=True)
+                primary = ctx.compose_files[0]
+                if os.path.exists(primary):
+                    shutil.copy2(primary, run_dir / "compose.yml")
+            except OSError:
+                pass  # best-effort
+    finally:
+        if executor is not None:
+            executor.close()
 
 
 def explain_up(args):

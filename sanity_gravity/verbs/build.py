@@ -9,7 +9,6 @@ them keep working — the implementations now live in :mod:`build_hooks`.
 """
 from __future__ import annotations
 
-import atexit
 import json as _json
 import sys
 
@@ -112,12 +111,14 @@ def build(args):
     register_builtin_build_hooks(bus)
 
     executor = build_default_executor(reporter, dry_run=dry_run)
-    atexit.register(executor.close)
 
     try:
-        Orchestrator(bus, reporter, executor=executor).run(_BUILD_PHASES, ctx)
-    except ActionFailedError as e:
-        sys.exit(e.result.exit_code or 1)
+        try:
+            Orchestrator(bus, reporter, executor=executor).run(_BUILD_PHASES, ctx)
+        except ActionFailedError as e:
+            sys.exit(e.result.exit_code or 1)
+    finally:
+        executor.close()
 
 
 def explain_build(args):
@@ -173,8 +174,10 @@ def build_layered(tag, no_cache=False, base_image=None):  # pragma: no cover - l
         bus = EventBus()
         register_builtin_build_hooks(bus)
         executor = build_default_executor(reporter, dry_run=False)
-        atexit.register(executor.close)
-        Orchestrator(bus, reporter, executor=executor).run(_BUILD_PHASES, ctx)
+        try:
+            Orchestrator(bus, reporter, executor=executor).run(_BUILD_PHASES, ctx)
+        finally:
+            executor.close()
         return
     build(args)
 
