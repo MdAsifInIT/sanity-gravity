@@ -150,6 +150,64 @@ def test_reporter_close_propagates_to_sinks(tmp_path):
     assert file_sink._fp is None
 
 
+def test_reporter_start_emits_run_started_first():
+    """``start()`` must emit exactly one ``RunStarted`` event, stamped
+    with the reporter's run_id, before any other events."""
+    from sanity_gravity.events import RunStarted
+
+    rec = RecorderSink()
+    r = Reporter(sinks=[rec], run_id="runstart")
+    r.start()
+    r.info("after-start")
+    assert len(rec.events) == 2
+    assert isinstance(rec.events[0], RunStarted)
+    assert rec.events[0].run_id == "runstart"
+    assert rec.events[0].level == "header"
+
+
+def test_ansi_sink_renders_run_started_banner(tmp_path):
+    """AnsiSink must turn ``RunStarted`` into a ``Recording to …`` line.
+
+    This is the user-facing banner introduced in commit c611b9a /
+    28aae39. A regression here means users see no startup banner and
+    don't know where the run's logs landed.
+    """
+    from sanity_gravity.events import RunStarted
+
+    buf = io.StringIO()
+    sink = AnsiSink(buf)
+    sink.consume(RunStarted(ts=0.0, run_id="banner01", level="header"))
+    out = buf.getvalue()
+    assert "Recording to" in out
+    # The banner must include the run_id so the user can locate the dir.
+    assert "banner01" in out
+
+
+def test_dry_run_executor_jsonl_routes_to_stderr(tmp_path, capsys):
+    """In ``--dry-run --log-format=json`` the executor's WouldExecute
+    events must land on stderr (where JsonlSink lives), with stdout
+    staying clean for structured payloads."""
+    from sanity_gravity.effects.actions import RunSubprocess
+    from sanity_gravity.effects.executor import build_default_executor
+
+    reporter = build_default_reporter(log_format="json", base=tmp_path / "runs")
+    executor = build_default_executor(reporter, dry_run=True)
+    try:
+        executor.drain([RunSubprocess(argv=("docker", "ps"))], phase="up.docker")
+    finally:
+        executor.close()
+        reporter.close()
+
+    captured = capsys.readouterr()
+    assert captured.out == "", "stdout must stay clean in JSON mode"
+    assert captured.err.strip(), "expected JSONL events on stderr"
+    types = []
+    for line in captured.err.splitlines():
+        if line.strip():
+            types.append(json.loads(line)["type"])
+    assert "WouldExecute" in types
+
+
 def test_cli_list_visual_parity_only_recording_banner():
     """Legacy ``list`` output must be byte-identical except for the new
     ``Recording to …/runs/<id>/`` banner emitted at startup."""
