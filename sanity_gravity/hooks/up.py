@@ -253,15 +253,21 @@ def announce(ctx) -> None:
     resolved, so emit a single planned-outcome summary instead of the
     misleading success + access block.
     """
-    rp = ctx.resolved_ports
+    rp = getattr(ctx, "resolved_ports", None) or {}
     user = ctx.host_user
     connector_slug = ctx.tag.connector
 
     if getattr(ctx, "dry_run", False):
-        ports_summary = ", ".join(
-            f"{name}={value if value != '0' else '<ephemeral>'}"
-            for name, value in rp.items()
-        )
+        # Defensive: if an earlier phase aborted before ``auto_port_alloc``
+        # ran, ``resolved_ports`` will be empty. Don't mislead the user
+        # with a bare ``ports:`` line — say so explicitly.
+        if rp:
+            ports_summary = ", ".join(
+                f"{name}={value if value != '0' else '<ephemeral>'}"
+                for name, value in rp.items()
+            )
+        else:
+            ports_summary = "<unresolved — earlier phase did not run>"
         ctx.reporter.info(
             f"» would announce: {ctx.tag} ({connector_slug}) — "
             f"ports: {ports_summary}"
