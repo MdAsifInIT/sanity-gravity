@@ -94,9 +94,7 @@ def print_plain(msg=""):
         # the line shows up on stderr's JsonlSink. In text mode the
         # reporter's AnsiSink would prefix with ``ℹ`` which would
         # clobber the table layout, so we still bare-print there.
-        from sanity_gravity.core.reporter import AnsiSink
-        has_ansi = any(isinstance(s, AnsiSink) for s in _reporter.sinks)
-        if has_ansi:
+        if _reporter.is_text_mode():
             print(msg)
             return
         if msg != "":

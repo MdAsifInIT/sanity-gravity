@@ -328,6 +328,20 @@ class Reporter:
         """
         return self.base_dir / self.run_id
 
+    def is_text_mode(self) -> bool:
+        """True if an :class:`AnsiSink` is attached.
+
+        Verb-side helpers (e.g. ``cli/io.print_plain``) consult this to
+        decide whether bare ``print()`` is safe (stdout is human-bound)
+        or whether output should be emitted as an event so JSON mode
+        keeps stdout clean for structured payloads.
+        """
+        return any(isinstance(s, AnsiSink) for s in self.sinks)
+
+    def is_json_mode(self) -> bool:
+        """Inverse of :meth:`is_text_mode`."""
+        return not self.is_text_mode()
+
     def emit(self, event: Event) -> None:
         for sink in self.sinks:
             try:
