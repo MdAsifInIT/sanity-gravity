@@ -72,6 +72,39 @@ def print_warning(msg):
     print(f"{Colors.WARNING}⚠ {msg}{Colors.ENDC}")
 
 
+def print_plain(msg=""):
+    """Emit human-readable formatted output (tables, status blocks).
+
+    Use this for verb output that's *not* structured machine data — the
+    helper respects ``--log-format=json`` by routing through the
+    reporter (which sends Info events to stderr), keeping stdout clean
+    for actual JSON payloads. In text mode it prints to stdout exactly
+    as bare ``print()`` would, so existing colourised formatting
+    (``Colors.BOLD`` etc.) renders unchanged.
+
+    Empty calls (``print_plain()`` for spacing) are passed through as a
+    blank line in text mode and dropped in JSON mode.
+
+    For genuine structured payloads (e.g. ``list --json``,
+    ``build --list-intermediates --json``) keep using bare ``print()`` —
+    those *must* land on stdout in any mode.
+    """
+    if _reporter is not None:
+        # Reporter is in JSON mode → AnsiSink absent; emit as Info so
+        # the line shows up on stderr's JsonlSink. In text mode the
+        # reporter's AnsiSink would prefix with ``ℹ`` which would
+        # clobber the table layout, so we still bare-print there.
+        from sanity_gravity.core.reporter import AnsiSink
+        has_ansi = any(isinstance(s, AnsiSink) for s in _reporter.sinks)
+        if has_ansi:
+            print(msg)
+            return
+        if msg != "":
+            _reporter.info(msg)
+        return
+    print(msg)
+
+
 def _format_cmd_for_print(cmd):
     """Render argv list/tuple or str to a human-readable shell-ish form."""
     if isinstance(cmd, (list, tuple)):

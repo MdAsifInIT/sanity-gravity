@@ -6,6 +6,7 @@ from sanity_gravity.cli.io import (
     print_error,
     print_header,
     print_info,
+    print_plain,
     print_success,
 )
 
@@ -43,33 +44,33 @@ def proxy_status_cmd(args):
     print_header("SSH Proxy Status")
 
     if status["setup"]:
-        print(f"  Service:    {Colors.OKGREEN}Enabled{Colors.ENDC}")
+        print_plain(f"  Service:    {Colors.OKGREEN}Enabled{Colors.ENDC}")
     else:
-        print(f"  Service:    {Colors.FAIL}Not Setup{Colors.ENDC}")
+        print_plain(f"  Service:    {Colors.FAIL}Not Setup{Colors.ENDC}")
 
     if status["active"]:
-        print(f"  Active:     {Colors.OKGREEN}Running{Colors.ENDC}")
+        print_plain(f"  Active:     {Colors.OKGREEN}Running{Colors.ENDC}")
     else:
-        print(f"  Active:     {Colors.FAIL}Stopped{Colors.ENDC}")
+        print_plain(f"  Active:     {Colors.FAIL}Stopped{Colors.ENDC}")
 
     if status["socket_exists"]:
-        print(
+        print_plain(
             f"  Socket:     {Colors.OKGREEN}Present{Colors.ENDC} "
             f"({pm.get_socket_path()})"
         )
     else:
-        print(f"  Socket:     {Colors.FAIL}Missing{Colors.ENDC}")
+        print_plain(f"  Socket:     {Colors.FAIL}Missing{Colors.ENDC}")
 
     if status["agent_reachable"]:
-        print(f"  Agent:      {Colors.OKGREEN}Reachable{Colors.ENDC}")
+        print_plain(f"  Agent:      {Colors.OKGREEN}Reachable{Colors.ENDC}")
     else:
         if status["error"]:
-            print(
+            print_plain(
                 f"  Agent:      {Colors.FAIL}Unreachable "
                 f"({status['error']}){Colors.ENDC}"
             )
         else:
-            print(f"  Agent:      {Colors.FAIL}Unreachable{Colors.ENDC}")
+            print_plain(f"  Agent:      {Colors.FAIL}Unreachable{Colors.ENDC}")
 
 
 def proxy_remove_cmd(args):

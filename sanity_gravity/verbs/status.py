@@ -8,6 +8,7 @@ from sanity_gravity.cli.io import (
     print_error,
     print_header,
     print_info,
+    print_plain,
     print_success,
     print_warning,
     run_command,
@@ -56,24 +57,24 @@ def status(args):
                 capture=True, check=False,
             )
             if output:
-                print(output)
+                print_plain(output)
             else:
                 print_info("  No containers running.")
 
-            print("")
+            print_plain("")
         except (subprocess.CalledProcessError, SystemExit) as e:
             print_error(f"Failed to get status for {project}: {e}")
 
     if target_project == "sanity-gravity":
         legacy_projects = get_legacy_projects()
         if legacy_projects:
-            print(
+            print_plain(
                 f"\n{Colors.WARNING}⚠ Found {len(legacy_projects)} legacy "
                 f"container(s) not managed by Sanity CLI:{Colors.ENDC}"
             )
             for lp in legacy_projects:
-                print(f"  - {lp}")
-            print(
+                print_plain(f"  - {lp}")
+            print_plain(
                 f"{Colors.BOLD}Run 'sanity-cli upgrade' to detect and migrate "
                 f"them.{Colors.ENDC}"
             )
@@ -88,43 +89,43 @@ def list_variants(args):
 
     print_header("Dimension Matrix")
 
-    print(f"\n  {Colors.BOLD}Agents:{Colors.ENDC}")
+    print_plain(f"\n  {Colors.BOLD}Agents:{Colors.ENDC}")
     for slug, info in AGENTS.items():
         gui_tag = (
             f" {Colors.WARNING}(requires GUI){Colors.ENDC}"
             if info["requires_gui"] else ""
         )
-        print(f"    {Colors.OKCYAN}{slug}{Colors.ENDC} = {info['name']}{gui_tag}")
+        print_plain(f"    {Colors.OKCYAN}{slug}{Colors.ENDC} = {info['name']}{gui_tag}")
 
-    print(f"\n  {Colors.BOLD}Connectors:{Colors.ENDC}")
+    print_plain(f"\n  {Colors.BOLD}Connectors:{Colors.ENDC}")
     for slug, info in CONNECTORS.items():
         gui_tag = (
             f" {Colors.WARNING}(requires GUI){Colors.ENDC}"
             if info["requires_gui"] else ""
         )
-        print(f"    {Colors.OKCYAN}{slug}{Colors.ENDC} = {info['name']}{gui_tag}")
+        print_plain(f"    {Colors.OKCYAN}{slug}{Colors.ENDC} = {info['name']}{gui_tag}")
 
-    print(f"\n  {Colors.BOLD}Desktops:{Colors.ENDC}")
+    print_plain(f"\n  {Colors.BOLD}Desktops:{Colors.ENDC}")
     for slug, info in DESKTOPS.items():
         gui_tag = (
             f" {Colors.OKGREEN}(GUI){Colors.ENDC}" if info["has_gui"]
             else f" {Colors.WARNING}(headless){Colors.ENDC}"
         )
-        print(f"    {Colors.OKCYAN}{slug}{Colors.ENDC} = {info['name']}{gui_tag}")
+        print_plain(f"    {Colors.OKCYAN}{slug}{Colors.ENDC} = {info['name']}{gui_tag}")
 
-    print(
+    print_plain(
         f"\n  {Colors.BOLD}Tag format:{Colors.ENDC} "
         "{agent}-{desktop}-{connector}"
     )
-    print(f"  {Colors.BOLD}Default:{Colors.ENDC} {DEFAULT_TAG}")
+    print_plain(f"  {Colors.BOLD}Default:{Colors.ENDC} {DEFAULT_TAG}")
 
-    print(f"\n  {Colors.BOLD}All valid tags:{Colors.ENDC}")
+    print_plain(f"\n  {Colors.BOLD}All valid tags:{Colors.ENDC}")
     for tag in VALID_TAGS:
         marker = (
             f" {Colors.OKGREEN}(default){Colors.ENDC}"
             if tag == DEFAULT_TAG else ""
         )
-        print(f"    {Colors.OKCYAN}{tag}{Colors.ENDC}{marker}")
+        print_plain(f"    {Colors.OKCYAN}{tag}{Colors.ENDC}{marker}")
 
 
 def plugins_list(args):
@@ -151,16 +152,16 @@ def plugins_list(args):
         ("Connectors", reg.connectors),
     )
     for label, bucket in sections:
-        print(f"\n  {Colors.BOLD}{label}:{Colors.ENDC}")
+        print_plain(f"\n  {Colors.BOLD}{label}:{Colors.ENDC}")
         if not bucket:
-            print(f"    {Colors.WARNING}(none){Colors.ENDC}")
+            print_plain(f"    {Colors.WARNING}(none){Colors.ENDC}")
             continue
         for slug, m in bucket.items():
             line = (
                 f"    {Colors.OKCYAN}{slug}{Colors.ENDC} = {m.name}  "
                 f"{_render_caps(m)}{_render_ports(m)}"
             )
-            print(line)
+            print_plain(line)
 
     total = len(reg.agents) + len(reg.desktops) + len(reg.connectors)
     print_success(f"{total} plugins registered")

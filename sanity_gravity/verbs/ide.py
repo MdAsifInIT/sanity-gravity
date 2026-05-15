@@ -9,6 +9,7 @@ from sanity_gravity.cli.io import (
     print_error,
     print_header,
     print_info,
+    print_plain,
     run_command,
 )
 from sanity_gravity.cli.registry import VALID_TAGS
@@ -24,11 +25,11 @@ def ide_cmd(args):
         active = get_active_projects()
         if not active:
             print_error("No active managed projects found.")
-            print("Tip: Use --name <project> to specify a project.")
+            print_plain("Tip: Use --name <project> to specify a project.")
             return
         if len(active) > 1:
             print_error(f"Multiple active projects found: {', '.join(active)}")
-            print("Please specify a project with --name.")
+            print_plain("Please specify a project with --name.")
             return
         project_name = active[0]
 

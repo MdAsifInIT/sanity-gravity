@@ -19,6 +19,7 @@ from sanity_gravity.cli.io import (
     print_error,
     print_header,
     print_info,
+    print_plain,
     print_success,
     print_warning,
     run_command,
@@ -42,10 +43,10 @@ def sync_config(project_name, container_name, username, config_source="config"):
             return
 
         print_info(f"No project configuration found in ./{config_dir}/")
-        print(f"{Colors.BOLD}Select an option to initialize configuration:{Colors.ENDC}")
-        print("  [A] Copy from Host (~/.gemini/) - Recommended")
-        print("  [B] Create Empty (Initialize empty config)")
-        print("  [C] Skip (Use container defaults)")
+        print_plain(f"{Colors.BOLD}Select an option to initialize configuration:{Colors.ENDC}")
+        print_plain("  [A] Copy from Host (~/.gemini/) - Recommended")
+        print_plain("  [B] Create Empty (Initialize empty config)")
+        print_plain("  [C] Skip (Use container defaults)")
 
         choice = input(
             f"{Colors.OKBLUE}Enter choice [A/b/c]: {Colors.ENDC}"

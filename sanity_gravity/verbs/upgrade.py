@@ -9,6 +9,7 @@ from sanity_gravity.cli.io import (
     print_error,
     print_header,
     print_info,
+    print_plain,
     print_success,
     print_warning,
     run_command,
@@ -39,7 +40,7 @@ def upgrade(args):
         else:
             print_error(f"Project '{target}' is not identified as a legacy container.")
             if legacy:
-                print(f"Detected legacy projects: {', '.join(legacy)}")
+                print_plain(f"Detected legacy projects: {', '.join(legacy)}")
             return
 
     if not legacy:
@@ -48,13 +49,13 @@ def upgrade(args):
 
     print_header("Found Legacy Containers")
     for p in legacy:
-        print(f" - {p}")
+        print_plain(f" - {p}")
 
-    print(
+    print_plain(
         f"\n{Colors.WARNING}This will recreate the containers to apply new "
         f"management labels.{Colors.ENDC}"
     )
-    print(
+    print_plain(
         "Data in volumes will be preserved, but running processes will be "
         "interrupted."
     )
