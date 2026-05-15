@@ -177,40 +177,67 @@ class _PortsView:
 
     Wrapping the dict lets the manifest template reference ``{ports.http}``
     via attribute access while still raising on unknown labels (rather
-    than silently emitting an empty string).
+    than silently emitting an empty string). Errors carry the plugin
+    slug and the available labels so authors can fix typos without
+    having to re-read the manifest.
     """
 
-    def __init__(self, mapping: dict[str, str]) -> None:
+    def __init__(
+        self,
+        mapping: dict[str, str],
+        *,
+        plugin_slug: str | None = None,
+    ) -> None:
         self._m = mapping
+        self._plugin_slug = plugin_slug
 
     def __getattr__(self, name: str) -> str:
+        # ``__getattr__`` is invoked for ``_m`` / ``_plugin_slug``
+        # during ``__init__`` on some Python versions; guard with
+        # ``object.__getattribute__`` not to recurse if a typo names
+        # one of our own attrs.
+        if name in ("_m", "_plugin_slug"):
+            raise AttributeError(name)
         try:
             return self._m[name]
         except KeyError as exc:
-            raise KeyError(f"Unknown port label '{name}' in announce template") from exc
+            available = ", ".join(sorted(self._m)) or "(none)"
+            where = (
+                f" in {self._plugin_slug!r} announce template"
+                if self._plugin_slug else " in announce template"
+            )
+            raise KeyError(
+                f"Unknown port label '{name}'{where}; "
+                f"available labels: {available}"
+            ) from exc
 
 
 def _ports_for_announce(ctx, *manifests) -> dict[str, str]:
     """Map manifest port labels onto the runtime-resolved port dict.
 
-    The runtime ``resolved_ports`` dict is keyed by legacy slug
-    (``ssh`` / ``kasm`` / ``vnc`` / ``novnc``); manifest port labels
-    are author-defined (``ssh`` / ``http`` / ``vnc`` / ``novnc``).
-    We bridge by matching ``PortSpec.internal`` against a legacy table.
-    Accepts any number of manifests (agent / desktop / connector); a
-    label declared by multiple plugins on the same internal port simply
-    resolves to the same value.
+    The runtime ``resolved_ports`` dict is keyed by *legacy slug*
+    (``ssh`` / ``kasm`` / ``vnc`` / ``novnc``) — the labels
+    ``auto_port_alloc`` writes today. Manifest port labels are
+    author-defined (``ssh`` / ``http`` / ``vnc`` / ``novnc``). Each
+    :class:`PortSpec` carries an optional ``legacy_slug`` field that
+    bridges the two: if set, the resolved value is fetched under that
+    slug; otherwise we fall back to the manifest's own label (so a
+    manifest whose label *happens* to match a slug works without
+    declaring it).
+
+    This replaces a previously hardcoded ``legacy_by_internal`` table.
+    The kernel no longer knows about specific connector ports; the
+    knowledge lives in each connector's manifest.
     """
     rp = ctx.resolved_ports
-    legacy_by_internal = {22: "ssh", 8444: "kasm", 5901: "vnc", 6901: "novnc"}
     out: dict[str, str] = {}
     for manifest in manifests:
         if manifest is None:
             continue
         for port in manifest.ports:
-            legacy = legacy_by_internal.get(port.internal)
-            if legacy is not None and legacy in rp:
-                out[port.label] = rp[legacy]
+            slug = port.legacy_slug or port.label
+            if slug in rp:
+                out[port.label] = rp[slug]
     return out
 
 
@@ -281,9 +308,8 @@ def announce(ctx) -> None:
     agent_m = reg.agents.get(ctx.tag.agent)
     desktop_m = reg.desktops.get(ctx.tag.desktop)
 
-    ports_view = _PortsView(_ports_for_announce(ctx, connector_m, agent_m, desktop_m))
-    fmt_kwargs = dict(
-        ports=ports_view,
+    ports_map = _ports_for_announce(ctx, connector_m, agent_m, desktop_m)
+    base_fmt_kwargs = dict(
         user=user,
         password=ctx.password,
         tag=str(ctx.tag),
@@ -295,6 +321,13 @@ def announce(ctx) -> None:
     for manifest in (connector_m, agent_m, desktop_m):
         if manifest is None or manifest.announce is None:
             continue
+        # Per-manifest ``_PortsView`` carries the plugin slug so the
+        # KeyError raised on an unknown label tells the author which
+        # plugin's template has the typo.
+        fmt_kwargs = dict(
+            base_fmt_kwargs,
+            ports=_PortsView(ports_map, plugin_slug=manifest.slug),
+        )
         rendered = _render_announce(manifest.announce.template, **fmt_kwargs)
         # Last-write-wins on collisions — connector goes first so its
         # canonical fields (URL, SSH, User, Pass) keep their values
