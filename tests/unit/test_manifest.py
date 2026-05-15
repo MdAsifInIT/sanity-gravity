@@ -216,3 +216,54 @@ def test_missing_dockerfile_key_rejected(tmp_path):
 def test_nonexistent_file(tmp_path):
     with pytest.raises(ManifestError, match="manifest not found"):
         load_manifest(tmp_path / "nope.toml")
+
+
+# ---------------------------------------------------------------------------
+# Malformed TOML / api_version / source_path-derived attribute paths.
+# ---------------------------------------------------------------------------
+
+
+def test_malformed_toml_unclosed_table_wrapped(tmp_path):
+    """A genuine TOML parse error must surface as ``ManifestError`` —
+    not a raw ``tomllib.TOMLDecodeError`` — with the manifest path in
+    the message so the user knows which file to fix."""
+    path = _write(tmp_path, "[plugin\nslug = \"oops\"\n")
+    with pytest.raises(ManifestError, match="TOML parse error") as excinfo:
+        load_manifest(path)
+    assert str(path) in str(excinfo.value)
+
+
+def test_malformed_toml_duplicate_key_wrapped(tmp_path):
+    path = _write(
+        tmp_path,
+        '[plugin]\nslug = "a"\nslug = "b"\nname = "x"\nkind = "agent"\napi_version = "1"\n'
+        '[build]\ndockerfile = "Dockerfile"\n',
+    )
+    with pytest.raises(ManifestError, match="TOML parse error"):
+        load_manifest(path)
+
+
+def test_unknown_api_version_rejected(tmp_path):
+    """Future / unknown api_version must fail closed: silently loading
+    a plugin that targets a different schema is a recipe for bugs."""
+    path = _write(
+        tmp_path,
+        '[plugin]\nslug = "x"\nname = "x"\nkind = "agent"\napi_version = "99"\n'
+        '[build]\ndockerfile = "Dockerfile"\n',
+    )
+    with pytest.raises(ManifestError, match="api_version"):
+        load_manifest(path)
+
+
+def test_dockerfile_path_without_source_path_raises():
+    """In-memory manifests have no ``source_path`` and must therefore
+    raise on path-derived attributes rather than yield a misleading
+    relative path."""
+    m = PluginManifest(
+        slug="x", name="x", kind="agent", api_version="1",
+        provides=(), requires=(), dockerfile="Dockerfile",
+    )
+    with pytest.raises(ManifestError, match="source_path"):
+        _ = m.dockerfile_path
+    with pytest.raises(ManifestError, match="source_path"):
+        _ = m.dir

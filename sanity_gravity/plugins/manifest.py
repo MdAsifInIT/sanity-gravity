@@ -82,6 +82,16 @@ __all__ = [
 
 _VALID_KINDS = {"agent", "desktop", "connector"}
 
+# Manifest schema versions this loader understands. Update when bumping
+# the schema with a backwards-incompatible change; an unknown version is
+# rejected at load time so old plugins do not silently mis-parse against
+# new code.
+#
+# The check is **literal-string equality** — ``"1.0"`` and ``"v1"`` are
+# rejected. The error message names the accepted form so authors know how
+# to fix their manifest.
+SUPPORTED_API_VERSIONS: frozenset[str] = frozenset({"1"})
+
 
 class ManifestError(ValueError):
     """Raised on schema or value violations in a plugin manifest."""
@@ -139,14 +149,33 @@ class PluginManifest:
 
     @property
     def dir(self) -> Path:
-        """Directory containing this manifest (Docker build context)."""
+        """Directory containing this manifest (Docker build context).
+
+        Raises :class:`ManifestError` if ``source_path`` was not set
+        (typically only happens for manifests synthesized in tests; a
+        manifest produced by :func:`load_manifest` always carries the
+        path of the file it came from).
+        """
         if self.source_path is None:
-            raise ManifestError(f"Manifest {self.slug!r} has no source_path")
+            raise ManifestError(
+                f"Manifest {self.slug!r} has no source_path; "
+                f"path-derived attributes (dir, dockerfile_path) are unavailable"
+            )
         return self.source_path.parent
 
     @property
     def dockerfile_path(self) -> Path:
-        """Absolute path to the plugin's Dockerfile."""
+        """Absolute path to the plugin's Dockerfile.
+
+        Same precondition as :attr:`dir` — raises :class:`ManifestError`
+        if ``source_path`` is unset rather than yielding a misleading
+        relative path.
+        """
+        if self.source_path is None:
+            raise ManifestError(
+                f"Manifest {self.slug!r} has no source_path; "
+                f"dockerfile_path is unavailable"
+            )
         return self.dir / self.dockerfile
 
     def ports_by_label(self) -> dict[str, PortSpec]:
@@ -266,6 +295,25 @@ def load_manifest(path: str | Path) -> PluginManifest:
     if kind not in _VALID_KINDS:
         raise ManifestError(
             f"{p}: [plugin].kind must be one of {sorted(_VALID_KINDS)}, got '{kind}'"
+        )
+
+    if api_version not in SUPPORTED_API_VERSIONS:
+        accepted = sorted(SUPPORTED_API_VERSIONS)
+        hint = ""
+        # ``1.0`` / ``v1`` look like "the same thing" to humans but are
+        # not equal strings. Surface a targeted hint so the author can
+        # fix the manifest in one edit.
+        normalized = api_version.lstrip("vV").rstrip()
+        if normalized.endswith(".0"):
+            normalized = normalized[:-2]
+        if normalized in SUPPORTED_API_VERSIONS:
+            hint = (
+                f" (the comparison is exact-string; try "
+                f'api_version = "{normalized}" instead of "{api_version}")'
+            )
+        raise ManifestError(
+            f"{p}: [plugin].api_version '{api_version}' is not supported; "
+            f"this loader accepts exactly one of {accepted}.{hint}"
         )
 
     capabilities = data.get("capabilities") or {}
