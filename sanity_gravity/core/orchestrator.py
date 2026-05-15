@@ -143,15 +143,45 @@ class Orchestrator:
         self.reporter = reporter
         self.executor = executor
 
+    def _on_isolated_error(self, hook: Any, exc: BaseException) -> None:
+        """Log a plugin hook's failure to the reporter without re-raising."""
+        name = getattr(hook, "name", None) or "<anon>"
+        phase_value = getattr(getattr(hook, "phase", None), "value", "<?>")
+        self.reporter.warning(
+            f"plugin hook {name!r} raised on phase {phase_value}: "
+            f"{type(exc).__name__}: {exc}"
+        )
+
     def run(self, phases: Sequence[Phase], ctx: Any) -> None:
         for phase in phases:
             self.reporter.info(f"[{phase.value}]")
             hooks = self.bus.hooks_for(phase) if hasattr(self.bus, "hooks_for") else None
             if hooks is None:
-                self.bus.publish(phase, ctx)
+                self.bus.publish(
+                    phase, ctx, on_isolated_error=self._on_isolated_error,
+                )
             else:
                 for hook in hooks:
-                    hook.fn(ctx)
+                    if getattr(hook, "isolated", False):
+                        # Snapshot the actions queue so a half-failed hook's
+                        # already-appended actions can be discarded — running
+                        # them would defeat the point of isolation.
+                        # ``Exception`` (not ``BaseException``) so SystemExit
+                        # / KeyboardInterrupt still abort the run.
+                        actions_attr = getattr(ctx, "actions", None)
+                        baseline = (
+                            len(actions_attr)
+                            if isinstance(actions_attr, list) else None
+                        )
+                        try:
+                            hook.fn(ctx)
+                        except Exception as exc:  # plugin-contributed
+                            if baseline is not None:
+                                # Drop anything this hook added before raising.
+                                del actions_attr[baseline:]
+                            self._on_isolated_error(hook, exc)
+                    else:
+                        hook.fn(ctx)
                     if self.executor is not None and hasattr(ctx, "drain_actions"):
                         pending = ctx.drain_actions()
                         if pending:

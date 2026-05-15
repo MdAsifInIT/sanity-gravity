@@ -2,8 +2,20 @@
 
 Hooks subscribe to a :class:`Phase`, the orchestrator publishes phases in
 order, and each hook receives a shared mutable context. Hooks are called
-by ``priority`` (lower first), then registration order. If a hook raises,
-the exception propagates: the orchestrator decides how to surface it.
+by ``priority`` (lower first), then registration order.
+
+Two failure modes:
+
+- **Builtin hooks** (subscribed directly by a verb's
+  ``register_builtin_*_hooks``) propagate exceptions. The orchestrator
+  decides how to surface them — typically by aborting the run, since
+  builtins encode invariants the kernel needs (validation, port alloc,
+  etc.).
+- **Plugin-contributed hooks** (registered against the module-level
+  default bus via ``@on`` and merged in via :meth:`EventBus.merge_into`)
+  are marked ``isolated=True``. If they raise, the orchestrator reports
+  the failure and continues to the next hook. A buggy third-party plugin
+  must not be able to abort an ``up`` flow midway.
 """
 from __future__ import annotations
 
@@ -18,12 +30,18 @@ HookFn = Callable[[Any], None]
 
 @dataclass(frozen=True)
 class Hook:
-    """A single subscription. ``name`` is for debugging only."""
+    """A single subscription. ``name`` is for debugging only.
+
+    ``isolated`` marks plugin-contributed hooks: when True, the
+    orchestrator catches and reports any exception the hook raises
+    instead of aborting the run. Builtin hooks default to ``False``.
+    """
 
     phase: Phase
     fn: HookFn
     priority: int = 100
     name: str | None = None
+    isolated: bool = False
     _seq: int = field(default=0, compare=False)
 
 
@@ -35,19 +53,44 @@ class EventBus:
         self._counter: int = 0
 
     def subscribe(self, phase: Phase, fn: HookFn, *,
-                  priority: int = 100, name: str | None = None) -> Hook:
-        """Register ``fn`` to be called when ``phase`` is published."""
+                  priority: int = 100, name: str | None = None,
+                  isolated: bool = False) -> Hook:
+        """Register ``fn`` to be called when ``phase`` is published.
+
+        ``isolated=True`` marks the hook as plugin-contributed: the
+        orchestrator wraps its dispatch in try/except so the run does not
+        abort if it raises. Builtins leave the default (``False``).
+        """
         self._counter += 1
         hook = Hook(phase=phase, fn=fn, priority=priority,
                     name=name or getattr(fn, "__name__", "<anon>"),
+                    isolated=isolated,
                     _seq=self._counter)
         self._hooks.setdefault(phase, []).append(hook)
         return hook
 
-    def publish(self, phase: Phase, ctx: Any) -> None:
-        """Dispatch ``ctx`` to every hook bound to ``phase`` in order."""
+    def publish(self, phase: Phase, ctx: Any, *,
+                on_isolated_error: Callable[[Hook, BaseException], None] | None = None) -> None:
+        """Dispatch ``ctx`` to every hook bound to ``phase`` in order.
+
+        If ``on_isolated_error`` is provided, exceptions raised by
+        ``isolated`` hooks are passed to it and dispatch continues.
+        Without a handler, isolated-hook errors propagate (preserves the
+        legacy behaviour for callers that use ``publish`` directly).
+        Builtin (non-isolated) hooks always propagate.
+        """
         for hook in self.hooks_for(phase):
-            hook.fn(ctx)
+            if hook.isolated and on_isolated_error is not None:
+                try:
+                    hook.fn(ctx)
+                except Exception as exc:  # plugin-contributed; isolate
+                    # Catch ``Exception`` (not ``BaseException``) so
+                    # ``SystemExit`` / ``KeyboardInterrupt`` still abort
+                    # the run — those are user / interpreter intent,
+                    # not plugin misbehaviour to swallow.
+                    on_isolated_error(hook, exc)
+            else:
+                hook.fn(ctx)
 
     def hooks_for(self, phase: Phase) -> list[Hook]:
         """Return hooks for ``phase`` in dispatch order (sorted copy)."""
@@ -62,15 +105,34 @@ class EventBus:
         out.sort(key=lambda h: h._seq)
         return out
 
-    def merge_into(self, other: "EventBus") -> None:
+    def merge_into(self, other: "EventBus", *, isolate: bool = True) -> None:
         """Re-subscribe every hook on ``self`` onto ``other``.
 
         Used to splice plugin-contributed hooks (registered against the
         module-level default bus via ``@on``) into a per-verb bus before
         the orchestrator runs.
+
+        ``isolate`` controls how merged hooks are dispatched:
+
+        - ``True`` (default, plugin-style): merged hooks are marked
+          ``isolated=True`` so a buggy third-party plugin cannot abort
+          the verb's phase loop — the orchestrator reports the failure
+          and continues with the next hook.
+        - ``False`` (builtin-style): the original ``Hook.isolated`` flag
+          on each source hook is preserved. Use this when splicing
+          hooks that are part of the kernel's correctness story and
+          must be allowed to abort.
+
+        Builtin hooks normally subscribe directly to the per-verb bus
+        and never go through ``merge_into``.
         """
         for h in self.all_hooks():
-            other.subscribe(h.phase, h.fn, priority=h.priority, name=h.name)
+            other.subscribe(
+                h.phase, h.fn,
+                priority=h.priority,
+                name=h.name,
+                isolated=True if isolate else h.isolated,
+            )
 
     def clear(self) -> None:
         """Drop every subscription. Test isolation only."""

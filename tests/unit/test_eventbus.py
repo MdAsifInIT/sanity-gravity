@@ -123,6 +123,122 @@ def test_phase_str_value_round_trip():
     assert str(Phase.UP_DOCKER) == "up.docker"
 
 
+def test_subscribe_with_isolated_flag_marks_hook():
+    """A hook subscribed with ``isolated=True`` must carry that flag —
+    the orchestrator relies on it to decide whether to wrap dispatch in
+    a try/except."""
+    bus = EventBus()
+    h = bus.subscribe(Phase.UP_DOCKER, lambda c: None, isolated=True)
+    assert h.isolated is True
+    not_iso = bus.subscribe(Phase.UP_DOCKER, lambda c: None)
+    assert not_iso.isolated is False
+
+
+def test_publish_isolated_hook_exception_caught_with_handler():
+    """``publish(on_isolated_error=...)`` catches Exception from
+    isolated hooks and continues to subsequent hooks."""
+    bus = EventBus()
+    seen = []
+
+    def boom(ctx):
+        raise ValueError("plugin crash")
+
+    def good(ctx):
+        seen.append("good")
+
+    bus.subscribe(Phase.UP_VALIDATE, boom, isolated=True, name="boom")
+    bus.subscribe(Phase.UP_VALIDATE, good, isolated=True, name="good")
+
+    captured = []
+    bus.publish(
+        Phase.UP_VALIDATE, None,
+        on_isolated_error=lambda h, e: captured.append((h.name, str(e))),
+    )
+    assert seen == ["good"]
+    assert captured == [("boom", "plugin crash")]
+
+
+def test_publish_isolated_hook_does_not_swallow_systemexit():
+    """SystemExit / KeyboardInterrupt MUST propagate even from an
+    isolated hook — those represent user / interpreter intent, not
+    plugin misbehaviour."""
+    bus = EventBus()
+
+    def hook_exits(ctx):
+        raise SystemExit(2)
+
+    bus.subscribe(Phase.UP_VALIDATE, hook_exits, isolated=True)
+    import pytest as _pt
+    with _pt.raises(SystemExit):
+        bus.publish(
+            Phase.UP_VALIDATE, None,
+            on_isolated_error=lambda h, e: None,  # never called
+        )
+
+
+def test_publish_non_isolated_hook_propagates():
+    """A non-isolated (builtin) hook's exception must propagate even
+    if ``on_isolated_error`` is set — builtins encode kernel
+    invariants that callers must honor."""
+    bus = EventBus()
+
+    def boom(ctx):
+        raise RuntimeError("builtin invariant")
+
+    bus.subscribe(Phase.UP_VALIDATE, boom, isolated=False)
+
+    import pytest as _pt
+    with _pt.raises(RuntimeError, match="builtin invariant"):
+        bus.publish(
+            Phase.UP_VALIDATE, None,
+            on_isolated_error=lambda h, e: None,
+        )
+
+
+def test_publish_without_handler_isolated_hook_propagates():
+    """Without ``on_isolated_error``, even an isolated hook's exception
+    propagates (legacy behaviour: callers using ``publish`` directly
+    don't get the safety net for free)."""
+    bus = EventBus()
+
+    def boom(ctx):
+        raise ValueError("isolated but no handler")
+
+    bus.subscribe(Phase.UP_VALIDATE, boom, isolated=True)
+    import pytest as _pt
+    with _pt.raises(ValueError):
+        bus.publish(Phase.UP_VALIDATE, None)
+
+
+def test_merge_into_marks_hooks_isolated_by_default():
+    """``merge_into`` defaults to ``isolate=True`` — plugin hooks
+    spliced via the default bus inherit the safety net automatically."""
+    src = EventBus()
+    src.subscribe(Phase.UP_ANNOUNCE, lambda c: None, name="plugin_hook")
+
+    dst = EventBus()
+    src.merge_into(dst)
+
+    [hook] = dst.hooks_for(Phase.UP_ANNOUNCE)
+    assert hook.isolated is True
+    assert hook.name == "plugin_hook"
+
+
+def test_merge_into_isolate_false_preserves_origin_flag():
+    """``merge_into(isolate=False)`` preserves the source ``isolated``
+    flag instead of overriding to True. Used when splicing hooks that
+    are part of the kernel's correctness story."""
+    src = EventBus()
+    src.subscribe(Phase.UP_ANNOUNCE, lambda c: None, name="builtin_a", isolated=False)
+    src.subscribe(Phase.UP_ANNOUNCE, lambda c: None, name="builtin_b", isolated=True)
+
+    dst = EventBus()
+    src.merge_into(dst, isolate=False)
+
+    flags = {h.name: h.isolated for h in dst.hooks_for(Phase.UP_ANNOUNCE)}
+    assert flags == {"builtin_a": False, "builtin_b": True}
+
+
 def test_tag_parse_round_trip():
     parsed = Tag.parse("ag-xfce-kasm", parser=lambda s: tuple(s.split("-")))
     assert parsed.agent == "ag"
