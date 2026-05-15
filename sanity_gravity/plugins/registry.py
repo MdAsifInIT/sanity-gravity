@@ -159,9 +159,15 @@ class PluginRegistry:
         try:
             spec.loader.exec_module(module)
         except BaseException as exc:  # re-raise with provenance
+            # Wrap in ManifestError rather than re-instantiating ``type(exc)``:
+            # several builtin exception types (OSError, etc.) reject a single
+            # string ctor, and ``type(exc)(msg)`` discards the original
+            # traceback's call site even when it succeeds. ``raise … from exc``
+            # preserves the chain so ``__cause__`` still points at the plugin.
             sys.modules.pop(mod_name, None)
-            raise type(exc)(
-                f"error loading plugin hooks at {hooks_path}: {exc}"
+            raise ManifestError(
+                f"error loading plugin hooks at {hooks_path}: "
+                f"{type(exc).__name__}: {exc}"
             ) from exc
         _LOADED_HOOK_MODULES.add(mod_name)
         return mod_name

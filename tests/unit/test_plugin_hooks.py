@@ -116,14 +116,42 @@ def test_hooks_py_fires_during_up_announce(tmp_path, monkeypatch):
 
 
 def test_syntax_error_in_hooks_py_raises_with_path(tmp_path):
-    """A broken hooks.py surfaces the offending plugin's path."""
+    """A broken hooks.py surfaces the offending plugin's path.
+
+    The wrapper is a :class:`ManifestError`; the original SyntaxError is
+    chained through ``__cause__`` so the plugin's call site is still
+    available in the traceback.
+    """
+    from sanity_gravity.plugins.manifest import ManifestError
+
     _write_manifest(tmp_path / "agents" / "broken", "broken", "agent")
     _write_hooks(tmp_path / "agents" / "broken", "this is not valid python !!!\n")
 
-    with pytest.raises(SyntaxError) as excinfo:
+    with pytest.raises(ManifestError) as excinfo:
         PluginRegistry.from_dir(tmp_path)
     assert "broken" in str(excinfo.value)
     assert "hooks.py" in str(excinfo.value)
+    assert isinstance(excinfo.value.__cause__, SyntaxError)
+
+
+def test_oserror_in_hooks_py_does_not_break_reraise(tmp_path):
+    """Plugin import errors whose ctor isn't ``(str)`` are wrapped, not re-built.
+
+    Regression: previously the loader did ``raise type(exc)(msg)``; for
+    OSError-family exceptions this either crashed (TypeError on ctor) or
+    silently dropped fields. The wrapper makes the failure mode boring.
+    """
+    from sanity_gravity.plugins.manifest import ManifestError
+
+    _write_manifest(tmp_path / "agents" / "ose", "ose", "agent")
+    _write_hooks(
+        tmp_path / "agents" / "ose",
+        "import errno\nraise OSError(errno.EACCES, 'denied')\n",
+    )
+    with pytest.raises(ManifestError) as excinfo:
+        PluginRegistry.from_dir(tmp_path)
+    assert "ose" in str(excinfo.value)
+    assert isinstance(excinfo.value.__cause__, OSError)
 
 
 def test_plugin_without_hooks_py_loads_normally(tmp_path):
