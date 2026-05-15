@@ -15,6 +15,7 @@ dockerfile = "Dockerfile"
 internal = 22
 default = 2222
 env_var = "SSH_HOST_PORT"
+legacy_slug = "ssh"
 
 [announce]
 template = """

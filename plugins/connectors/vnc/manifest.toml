@@ -15,16 +15,19 @@ dockerfile = "Dockerfile"
 internal = 5901
 default = 5901
 env_var = "VNC_PORT"
+legacy_slug = "vnc"
 
 [ports.novnc]
 internal = 6901
 default = 6901
 env_var = "NOVNC_PORT"
+legacy_slug = "novnc"
 
 [ports.ssh]
 internal = 22
 default = 2222
 env_var = "SSH_HOST_PORT"
+legacy_slug = "ssh"
 
 [compose]
 shm_size = "512m"

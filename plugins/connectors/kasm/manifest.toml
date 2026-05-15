@@ -20,11 +20,13 @@ dockerfile = "Dockerfile"
 internal = 8444
 default = 8444
 env_var = "KASM_PORT"
+legacy_slug = "kasm"
 
 [ports.ssh]
 internal = 22
 default = 2222
 env_var = "SSH_HOST_PORT"
+legacy_slug = "ssh"
 
 [compose]
 shm_size = "512m"

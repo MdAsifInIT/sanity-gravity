@@ -83,9 +83,11 @@ def test_kasm_ports_and_compose():
     assert m.requires == ("display",)
     by_label = m.ports_by_label()
     assert by_label["http"] == PortSpec(
-        label="http", internal=8444, default=8444, env_var="KASM_PORT"
+        label="http", internal=8444, default=8444, env_var="KASM_PORT",
+        legacy_slug="kasm",
     )
     assert by_label["ssh"].internal == 22
+    assert by_label["ssh"].legacy_slug == "ssh"
     assert m.compose == ComposeOverlay(
         shm_size="512m", restart="unless-stopped", stop_grace_period="30s"
     )
@@ -267,3 +269,19 @@ def test_dockerfile_path_without_source_path_raises():
         _ = m.dockerfile_path
     with pytest.raises(ManifestError, match="source_path"):
         _ = m.dir
+
+
+def test_port_legacy_slug_optional(tmp_path):
+    """``legacy_slug`` defaults to None and can be set per-port."""
+    path = _write(
+        tmp_path,
+        '[plugin]\nslug = "x"\nname = "x"\nkind = "connector"\napi_version = "1"\n'
+        '[build]\ndockerfile = "Dockerfile"\n'
+        '[ports.unlabelled]\ninternal = 22\ndefault = 2222\nenv_var = "X_PORT"\n'
+        '[ports.tagged]\ninternal = 80\ndefault = 8080\nenv_var = "HTTP_PORT"\n'
+        'legacy_slug = "http"\n',
+    )
+    m = load_manifest(path)
+    by_label = m.ports_by_label()
+    assert by_label["unlabelled"].legacy_slug is None
+    assert by_label["tagged"].legacy_slug == "http"

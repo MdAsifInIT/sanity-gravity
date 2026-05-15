@@ -99,12 +99,29 @@ class ManifestError(ValueError):
 
 @dataclass(frozen=True)
 class PortSpec:
-    """A single named port on a plugin (any kind may declare ports)."""
+    """A single named port on a plugin (any kind may declare ports).
+
+    ``legacy_slug`` (optional) names the key under
+    ``UpContext.resolved_ports`` where the orchestrator stashes the
+    runtime-resolved port. Connectors set this so the announce hook can
+    look up the resolved value without a kernel-side hardcoded table.
+
+    The four legacy slugs in use today are ``"ssh"`` / ``"kasm"`` /
+    ``"vnc"`` / ``"novnc"`` (mirroring the hardcoded keys
+    ``auto_port_alloc`` still emits). New connectors are free to add
+    new slugs as long as a hook somewhere also populates
+    ``resolved_ports[<new_slug>]``.
+
+    When ``legacy_slug`` is unset the port label itself is used, so a
+    manifest that picks ``label`` matching the runtime slug works
+    without the field.
+    """
 
     label: str
     internal: int
     default: int
     env_var: str
+    legacy_slug: str | None = None
 
 
 @dataclass(frozen=True)
@@ -223,12 +240,16 @@ def _parse_ports(table: dict[str, Any] | None, where: str) -> tuple[PortSpec, ..
         sub_where = f"{where}.{label}"
         if not isinstance(sub, dict):
             raise ManifestError(f"{sub_where}: expected table")
+        legacy_slug = None
+        if "legacy_slug" in sub:
+            legacy_slug = _str(sub["legacy_slug"], f"{sub_where}.legacy_slug")
         out.append(
             PortSpec(
                 label=label,
                 internal=_int(_require(sub, "internal", sub_where), f"{sub_where}.internal"),
                 default=_int(_require(sub, "default", sub_where), f"{sub_where}.default"),
                 env_var=_str(_require(sub, "env_var", sub_where), f"{sub_where}.env_var"),
+                legacy_slug=legacy_slug,
             )
         )
     return tuple(out)
