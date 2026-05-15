@@ -42,8 +42,22 @@ def _project_compose_files() -> list[str]:
 
 
 def lifecycle_check_existence(ctx) -> None:
-    """LIFECYCLE_BEFORE/100: ``down`` only — bail if project missing."""
+    """LIFECYCLE_BEFORE/100: ``down`` only — bail if project missing.
+
+    In dry-run mode the check is skipped: ``get_active_projects``
+    shells out to ``docker ps``, which is exactly the kind of
+    side-effect-via-read that dry-run is meant to avoid (it can hang
+    if the daemon is down, and inflicts an audit-log entry the user
+    didn't ask for). The downstream hooks already short-circuit on
+    ``dry_run`` so a missing project simply produces a planned-action
+    summary instead of an error.
+    """
     if not ctx.check_existence:
+        return
+    if getattr(ctx, "dry_run", False):
+        ctx.reporter.info(
+            "Skipping project-existence check (dry-run does not query Docker)."
+        )
         return
 
     # Local import to avoid module-level cycle (lifecycle.py imports this).
@@ -53,12 +67,12 @@ def lifecycle_check_existence(ctx) -> None:
     if ctx.project not in active:
         ctx.reporter.warning(f"Project '{ctx.project}' not found.")
         if active:
-            print(f"Active projects: {', '.join(active)}")
-            print(
-                f"{Colors.OKBLUE}Tip: Use --name <project> to specify a project.{Colors.ENDC}"
+            ctx.reporter.info(f"Active projects: {', '.join(active)}")
+            ctx.reporter.info(
+                "Tip: Use --name <project> to specify a project."
             )
         else:
-            print("No active Sanity-Gravity projects found.")
+            ctx.reporter.info("No active Sanity-Gravity projects found.")
         ctx.project_exists = False
 
 

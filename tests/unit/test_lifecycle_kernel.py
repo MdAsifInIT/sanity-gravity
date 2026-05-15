@@ -101,10 +101,18 @@ def test_stop_action_uses_stop_verb():
 
 
 def test_down_with_check_existence_bails_when_project_missing():
-    """``down -n nonexistent`` should not enqueue any docker action."""
+    """``down -n nonexistent`` should not enqueue any docker action.
+
+    This tests the *real* (non dry-run) existence check; the dry-run
+    path explicitly skips the check (see ``lifecycle_check_existence``)
+    so we set ``dry_run=False`` here to exercise it.
+    """
     bus = EventBus()
     register_builtin_lifecycle_hooks(bus)
-    ctx = _ctx(action="down", check_existence=True, project="does-not-exist")
+    ctx = _ctx(
+        action="down", check_existence=True,
+        project="does-not-exist", dry_run=False,
+    )
 
     captured: list = []
 
@@ -114,6 +122,35 @@ def test_down_with_check_existence_bails_when_project_missing():
 
     Orchestrator(bus, ctx.reporter, executor=_Exec()).run(_LIFECYCLE_PHASES, ctx)
     assert captured == []
+
+
+def test_down_dry_run_skips_existence_check():
+    """In dry-run mode, the existence check is skipped entirely so the
+    verb does not shell out to ``docker ps`` (which can hang or write
+    audit log entries the user did not consent to). The compose action
+    is still enqueued — the executor short-circuits it as
+    ``WouldExecute``."""
+    bus = EventBus()
+    register_builtin_lifecycle_hooks(bus)
+    ctx = _ctx(
+        action="down", check_existence=True,
+        project="does-not-exist", dry_run=True,
+    )
+
+    # If the existence check fired, ``get_active_projects`` would be
+    # called. ``_stub_lifecycle_helpers`` already patches it; we rely
+    # on the guard to skip even calling the patched version.
+    captured: list = []
+
+    class _Exec:
+        def drain(self, actions, phase=None):
+            captured.extend(actions)
+
+    Orchestrator(bus, ctx.reporter, executor=_Exec()).run(_LIFECYCLE_PHASES, ctx)
+    # The compose action is enqueued (and would-execute'd by the real
+    # executor); we just check the hook didn't bail prematurely.
+    assert len(captured) == 1
+    assert captured[0].argv[-1] == "down"
 
 
 def test_clean_appends_extra_compose_args():
