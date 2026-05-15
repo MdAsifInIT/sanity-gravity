@@ -3,9 +3,10 @@
 The phase loop ``build.plan → build.layer → build.done`` is published by
 :class:`Orchestrator`; per-phase behaviour lives in :mod:`build_hooks`.
 
-A few legacy helpers (``resolve_build_chain``, ``build_layered``, etc.)
-are re-exported as thin shims so external callers / tests that import
-them keep working — the implementations now live in :mod:`build_hooks`.
+A few legacy helpers (``resolve_build_chain``, ``resolve_parent``,
+``generate_intermediates``) are re-exported as thin shims so existing
+tests can drive the build planner directly. The implementations live
+in :mod:`sanity_gravity.hooks.build`.
 """
 from __future__ import annotations
 
@@ -27,14 +28,8 @@ from sanity_gravity.core.orchestrator import (
 from sanity_gravity.effects.actions import ActionFailedError
 from sanity_gravity.effects.executor import build_default_executor
 from sanity_gravity.hooks.build import (
-    SANDBOX_DIR,
-    IMAGE_PREFIX,
     _generate_intermediates,
-    _image_exists,
-    _image_tag,
-    _plugin_dockerfile,
     _resolve_build_chain,
-    _resolve_intermediate_chain,
     register_builtin_build_hooks,
 )
 
@@ -125,84 +120,3 @@ def explain_build(args):
     """``explain build`` alias: dry-run the plan without executing."""
     args.dry_run = True
     return build(args)
-
-
-# Legacy thin wrappers re-exposed for callers that still import them
-# directly. New code should construct a BuildContext + Orchestrator.
-
-def _build_single(dockerfile, image_name, parent_name, no_cache=False,
-                  base_image_override=None):  # pragma: no cover - legacy
-    """Legacy single-layer build helper. Routed through the kernel via a
-    one-step ``BuildContext``."""
-    from sanity_gravity.cli.io import run_command  # local import to avoid cycle
-    from sanity_gravity.core.command import CommandBuilder
-
-    cb = CommandBuilder("docker", "build").flag("--no-cache", when=no_cache)
-    if base_image_override:
-        cb.opt("--build-arg", f"BASE_IMAGE={base_image_override}")
-    elif parent_name is not None:
-        cb.opt("--build-arg", f"BASE_IMAGE={_image_tag(parent_name)}")
-    import os as _os
-    if dockerfile.endswith("Dockerfile.base"):
-        context = SANDBOX_DIR
-    else:
-        context = _os.path.dirname(dockerfile)
-    cb.opt("-f", dockerfile).opt("-t", _image_tag(image_name)).positional(context)
-    run_command(cb.build())
-
-
-def build_layered(tag, no_cache=False, base_image=None):  # pragma: no cover - legacy
-    """Legacy entry point preserved for any external caller."""
-    class _Args:
-        variant = [tag]
-        no_cache = bool(no_cache)
-        layer = None
-        layer_target = None
-        list_intermediates = False
-        json_output = False
-        dry_run = False
-    args = _Args()
-    if base_image:
-        # Set as override on the ctx through the kernel via a synthetic ctx.
-        reporter = get_reporter()
-        ctx = BuildContext(
-            targets=[tag],
-            reporter=reporter,
-            no_cache=no_cache,
-            base_image_override=base_image,
-        )
-        bus = EventBus()
-        register_builtin_build_hooks(bus)
-        executor = build_default_executor(reporter, dry_run=False)
-        try:
-            Orchestrator(bus, reporter, executor=executor).run(_BUILD_PHASES, ctx)
-        finally:
-            executor.close()
-        return
-    build(args)
-
-
-def build_intermediates(no_cache=False):  # pragma: no cover - legacy
-    """Legacy: build all intermediates."""
-    class _Args:
-        variant = ["all"]
-        no_cache = bool(no_cache)
-        layer = "agent"  # all intermediates: base + desktops + agents
-        layer_target = None
-        list_intermediates = False
-        json_output = False
-        dry_run = False
-    build(_Args())
-
-
-def build_layer_target(layer_type, target=None, no_cache=False):  # pragma: no cover
-    """Legacy: build up to a specific layer type."""
-    class _Args:
-        variant = []
-        no_cache = bool(no_cache)
-        layer = layer_type
-        layer_target = target
-        list_intermediates = False
-        json_output = False
-        dry_run = False
-    build(_Args())
