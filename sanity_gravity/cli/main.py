@@ -22,6 +22,19 @@ _GLOBAL_BOOL_FLAGS = {"--dry-run"}
 _GLOBAL_VALUE_FLAGS = {"--log-format"}
 
 
+# Verbs that route through the microkernel and genuinely honor
+# ``--dry-run`` (the orchestrator + executor short-circuit side effects
+# and emit ``WouldExecute`` events). Any verb NOT in this set silently
+# does nothing different when ``--dry-run`` is passed; we surface a
+# warning rather than letting the user think the command was a preview.
+_DRY_RUN_AWARE_COMMANDS: frozenset[str] = frozenset({
+    "up", "run",
+    "build",
+    "down", "stop", "start", "restart", "clean",
+    "snapshot",
+})
+
+
 def _preprocess_argv(argv: list[str]) -> list[str]:
     """Two argv massages so the user can't get the syntax wrong:
 
@@ -29,6 +42,11 @@ def _preprocess_argv(argv: list[str]) -> list[str]:
        ``sanity-cli explain status`` is identical to
        ``sanity-cli --dry-run status``. Read-only verbs ignore the
        flag; kernelized verbs honor it.
+
+       **``explain`` is a reserved verb name.** A plugin must not
+       register a subcommand named ``explain`` — this rewrite would
+       silently shadow it. The contract is intentional: ``explain`` is
+       a CLI-level affordance, not a verb in its own right.
     2. Global flags (``--dry-run``, ``--log-format[=…]``) are lifted to
        the front regardless of where the user typed them. This makes
        ``sanity-cli status --dry-run`` work the same as
@@ -85,6 +103,17 @@ def main():
     # KeyboardInterrupt / unhandled exception paths.
     atexit.register(reporter.close)
     reporter.start()
+
+    # ``--dry-run`` is only meaningful for kernelized verbs. For every
+    # other verb the flag would otherwise be silently ignored, leaving
+    # the user thinking they had previewed an operation that actually
+    # ran (or would run). Surface a warning instead of failing closed —
+    # silent acceptance is the worse failure mode here.
+    if getattr(args, "dry_run", False) and args.command not in _DRY_RUN_AWARE_COMMANDS:
+        print_warning(
+            f"--dry-run has no effect for '{args.command}'; this verb is "
+            "read-only or non-kernelized and does not preview side effects."
+        )
 
     try:
         args.func(args)
