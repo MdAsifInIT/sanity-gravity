@@ -224,6 +224,47 @@ def test_merge_into_marks_hooks_isolated_by_default():
     assert hook.name == "plugin_hook"
 
 
+def test_skip_in_dry_run_flag_stored_on_hook():
+    bus = EventBus()
+    h = bus.subscribe(Phase.UP_DOCKER, lambda c: None, skip_in_dry_run=True)
+    assert h.skip_in_dry_run is True
+    h2 = bus.subscribe(Phase.UP_DOCKER, lambda c: None)
+    assert h2.skip_in_dry_run is False
+
+
+def test_publish_skips_skip_in_dry_run_hooks_when_dry_run():
+    """When ``ctx.dry_run`` is True, hooks marked ``skip_in_dry_run``
+    are not dispatched at all — neither their side effects nor any
+    "skipped" messages from inside them."""
+
+    class _Ctx:
+        dry_run = True
+
+    bus = EventBus()
+    fired = []
+    bus.subscribe(
+        Phase.UP_DOCKER, lambda c: fired.append("skipped"),
+        skip_in_dry_run=True,
+    )
+    bus.subscribe(Phase.UP_DOCKER, lambda c: fired.append("ran"))
+    bus.publish(Phase.UP_DOCKER, _Ctx())
+    assert fired == ["ran"]
+
+
+def test_publish_runs_skip_in_dry_run_hooks_when_not_dry_run():
+    class _Ctx:
+        dry_run = False
+
+    bus = EventBus()
+    fired = []
+    bus.subscribe(
+        Phase.UP_DOCKER, lambda c: fired.append("ran-skippable"),
+        skip_in_dry_run=True,
+    )
+    bus.publish(Phase.UP_DOCKER, _Ctx())
+    assert fired == ["ran-skippable"]
+
+
 def test_merge_into_isolate_false_preserves_origin_flag():
     """``merge_into(isolate=False)`` preserves the source ``isolated``
     flag instead of overriding to True. Used when splicing hooks that

@@ -153,6 +153,7 @@ class Orchestrator:
         )
 
     def run(self, phases: Sequence[Phase], ctx: Any) -> None:
+        dry_run = bool(getattr(ctx, "dry_run", False))
         for phase in phases:
             self.reporter.info(f"[{phase.value}]")
             hooks = self.bus.hooks_for(phase) if hasattr(self.bus, "hooks_for") else None
@@ -162,6 +163,13 @@ class Orchestrator:
                 )
             else:
                 for hook in hooks:
+                    # Hooks marked ``skip_in_dry_run`` are pure
+                    # side-effect with nothing to preview; the
+                    # orchestrator drops them in dry-run mode rather
+                    # than relying on each hook to check ``ctx.dry_run``
+                    # internally.
+                    if dry_run and getattr(hook, "skip_in_dry_run", False):
+                        continue
                     if getattr(hook, "isolated", False):
                         # Snapshot the actions queue so a half-failed hook's
                         # already-appended actions can be discarded — running

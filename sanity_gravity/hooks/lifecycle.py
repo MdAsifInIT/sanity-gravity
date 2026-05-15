@@ -44,20 +44,13 @@ def _project_compose_files() -> list[str]:
 def lifecycle_check_existence(ctx) -> None:
     """LIFECYCLE_BEFORE/100: ``down`` only — bail if project missing.
 
-    In dry-run mode the check is skipped: ``get_active_projects``
-    shells out to ``docker ps``, which is exactly the kind of
-    side-effect-via-read that dry-run is meant to avoid (it can hang
-    if the daemon is down, and inflicts an audit-log entry the user
-    didn't ask for). The downstream hooks already short-circuit on
-    ``dry_run`` so a missing project simply produces a planned-action
-    summary instead of an error.
+    The hook is declared ``skip_in_dry_run=True`` at subscription so
+    the orchestrator drops it entirely in dry-run; ``get_active_projects``
+    shells out to ``docker ps`` and that exactly the kind of read with
+    side effects (audit log, hang if daemon is down) that dry-run is
+    meant to avoid.
     """
     if not ctx.check_existence:
-        return
-    if getattr(ctx, "dry_run", False):
-        ctx.reporter.info(
-            "Skipping project-existence check (dry-run does not query Docker)."
-        )
         return
 
     # Local import to avoid module-level cycle (lifecycle.py imports this).
@@ -106,13 +99,15 @@ def lifecycle_resolve_compose(ctx) -> None:
 
 
 def lifecycle_recover_env(ctx) -> None:
-    """LIFECYCLE_BEFORE/300: recover environment from a running container."""
+    """LIFECYCLE_BEFORE/300: recover environment from a running container.
+
+    Declared ``skip_in_dry_run=True`` at subscription — the docker
+    inspect is pure side effect with nothing to preview.
+    """
     if getattr(ctx, "project_exists", True) is False:
         return
     if getattr(ctx, "cancelled", False):
         return
-    if ctx.dry_run:
-        return  # nothing to inspect in dry-run
 
     from sanity_gravity.verbs.lifecycle import get_project_env
 
@@ -186,9 +181,11 @@ def register_builtin_lifecycle_hooks(bus: EventBus) -> None:
     default_registry()  # ensure plugin hooks.py modules are loaded
 
     bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_clean_prompt, priority=50)
-    bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_check_existence, priority=100)
+    bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_check_existence,
+                  priority=100, skip_in_dry_run=True)
     bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_resolve_compose, priority=200)
-    bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_recover_env, priority=300)
+    bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_recover_env,
+                  priority=300, skip_in_dry_run=True)
     bus.subscribe(Phase.LIFECYCLE_DOCKER, lifecycle_compose_action, priority=100)
     bus.subscribe(Phase.LIFECYCLE_AFTER, lifecycle_announce, priority=100)
 

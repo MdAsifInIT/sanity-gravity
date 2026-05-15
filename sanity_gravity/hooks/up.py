@@ -123,12 +123,13 @@ def resolve_ephemeral(ctx) -> None:
     Direct ``run_command`` callable on purpose: the hook needs the
     captured stdout to feed back into ``ctx.resolved_ports``. Wrapping
     this as a typed Action with result piping is a future refinement.
+
+    Declared ``skip_in_dry_run=True`` at subscription time so the
+    orchestrator drops the hook entirely in dry-run — no docker probe,
+    no leftover ``"0"`` ports for announce to print.
     """
     rp = ctx.resolved_ports
     if "0" not in (rp.get("ssh"), rp.get("kasm"), rp.get("vnc"), rp.get("novnc")):
-        return
-    if getattr(ctx, "dry_run", False):
-        ctx.reporter.info("Resolving ephemeral ports... (skipped in dry-run)")
         return
 
     ctx.reporter.info("Resolving ephemeral ports...")
@@ -357,7 +358,8 @@ def register_builtin_up_hooks(bus: EventBus) -> None:
     bus.subscribe(Phase.UP_COMPOSE, gen_resource_compose, priority=300)
     bus.subscribe(Phase.UP_PORT_ALLOC, auto_port_alloc, priority=100)
     bus.subscribe(Phase.UP_DOCKER, docker_compose_up, priority=100)
-    bus.subscribe(Phase.UP_DOCKER, resolve_ephemeral, priority=200)
+    bus.subscribe(Phase.UP_DOCKER, resolve_ephemeral, priority=200,
+                  skip_in_dry_run=True)
     bus.subscribe(Phase.UP_PROVISION, sync_config_hook, priority=100)
     bus.subscribe(Phase.UP_ANNOUNCE, announce, priority=100)
 

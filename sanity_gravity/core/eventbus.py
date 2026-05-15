@@ -62,9 +62,16 @@ PRIORITY_TAIL: int = 500
 class Hook:
     """A single subscription. ``name`` is for debugging only.
 
-    ``isolated`` marks plugin-contributed hooks: when True, the
-    orchestrator catches and reports any exception the hook raises
-    instead of aborting the run. Builtin hooks default to ``False``.
+    Flags:
+
+    - ``isolated``: plugin-contributed hooks; the orchestrator catches
+      and reports any exception they raise instead of aborting the
+      run. Builtin hooks default to ``False`` and can abort.
+    - ``skip_in_dry_run``: pure side-effect hooks that have nothing
+      meaningful to preview. The orchestrator skips them entirely when
+      ``ctx.dry_run`` is True. Hooks that emit a "would do X" preview
+      line should NOT set this — they should check ``ctx.dry_run``
+      themselves so the preview is emitted.
     """
 
     phase: Phase
@@ -72,6 +79,7 @@ class Hook:
     priority: int = 100
     name: str | None = None
     isolated: bool = False
+    skip_in_dry_run: bool = False
     _seq: int = field(default=0, compare=False)
 
 
@@ -84,17 +92,23 @@ class EventBus:
 
     def subscribe(self, phase: Phase, fn: HookFn, *,
                   priority: int = 100, name: str | None = None,
-                  isolated: bool = False) -> Hook:
+                  isolated: bool = False,
+                  skip_in_dry_run: bool = False) -> Hook:
         """Register ``fn`` to be called when ``phase`` is published.
 
         ``isolated=True`` marks the hook as plugin-contributed: the
         orchestrator wraps its dispatch in try/except so the run does not
         abort if it raises. Builtins leave the default (``False``).
+
+        ``skip_in_dry_run=True`` declares the hook as pure side-effect
+        with nothing to preview; the orchestrator skips it entirely
+        when ``ctx.dry_run`` is True.
         """
         self._counter += 1
         hook = Hook(phase=phase, fn=fn, priority=priority,
                     name=name or getattr(fn, "__name__", "<anon>"),
                     isolated=isolated,
+                    skip_in_dry_run=skip_in_dry_run,
                     _seq=self._counter)
         self._hooks.setdefault(phase, []).append(hook)
         return hook
@@ -109,7 +123,10 @@ class EventBus:
         legacy behaviour for callers that use ``publish`` directly).
         Builtin (non-isolated) hooks always propagate.
         """
+        dry_run = bool(getattr(ctx, "dry_run", False))
         for hook in self.hooks_for(phase):
+            if dry_run and hook.skip_in_dry_run:
+                continue
             if hook.isolated and on_isolated_error is not None:
                 try:
                     hook.fn(ctx)
@@ -162,6 +179,7 @@ class EventBus:
                 priority=h.priority,
                 name=h.name,
                 isolated=True if isolate else h.isolated,
+                skip_in_dry_run=h.skip_in_dry_run,
             )
 
     def clear(self) -> None:
