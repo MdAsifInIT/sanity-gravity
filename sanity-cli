@@ -69,6 +69,31 @@ def generate_valid_tags():
     return tags
 
 VALID_TAGS = generate_valid_tags()
+
+# Pre-PR#10 flat service names and how they map onto the new
+# agent-desktop-connector tag. Migration assumes the default
+# agent=antigravity, desktop=xfce; only the connector carries over.
+LEGACY_SERVICES = {"core", "kasm", "vnc"}
+LEGACY_CONNECTOR = {"core": "ssh", "kasm": "kasm", "vnc": "vnc"}
+
+def legacy_target_tag(service):
+    """Map an old/managed service name to the per-tag target it migrates to.
+
+    A flat legacy service (core/kasm/vnc) becomes ag-xfce-<connector>.
+    A service that is already a valid tag (a managed container created
+    before the persistent-home model) migrates in place — same tag, the
+    point being only to attach the sanity_home volume.
+    Returns the target tag, or None if it cannot be mapped.
+    """
+    if service in VALID_TAGS:
+        return service
+    conn = LEGACY_CONNECTOR.get(service)
+    if conn:
+        candidate = f"ag-xfce-{conn}"
+        if candidate in VALID_TAGS:
+            return candidate
+    return None
+
 # Add lib to path
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
 try:
@@ -417,6 +442,16 @@ def generate_compose_for_tag(tag):
     ] + extra_env
     env_str = "\n".join(env_lines)
 
+    # Persistence model: the whole home dir lives on a per-project named
+    # volume (compose namespaces it as <project>_sanity_home), so agent
+    # state outside ./workspace — ~/.gemini, ~/.config, ~/.antigravity,
+    # ~/.claude, logins, history — survives container recreation/upgrade
+    # instead of dying with the writable layer. On first use Docker seeds
+    # the empty volume from the image's /home (skel + baked ~/.nvm/.npm);
+    # entrypoint.sh chowns it to the runtime user each start. The workspace
+    # host bind is nested inside and stays the source of truth for code.
+    # The sanity.gravity.home-volume label lets upgrade detect containers
+    # created before this model (no volume) that still need migration.
     content = f"""services:
   {service_name}:
     image: ${{SANITY_IMAGE_{tag.upper().replace('-', '_')}:-sanity-gravity:{tag}}}
@@ -424,6 +459,7 @@ def generate_compose_for_tag(tag):
     environment:
 {env_str}
     volumes:
+      - sanity_home:/home/${{HOST_USER:-developer}}
       - ${{WORKSPACE_DIR:-./workspace}}:/home/${{HOST_USER:-developer}}/workspace
     ports:
 {ports_str}
@@ -434,6 +470,10 @@ def generate_compose_for_tag(tag):
         hard: 65536
     labels:
       sanity.gravity.managed: "true"
+      sanity.gravity.home-volume: "true"
+
+volumes:
+  sanity_home:
 """
 
     config_dir = "config"
@@ -1019,32 +1059,49 @@ def get_managed_projects():
         print_warning(f"Could not list managed projects: {e}")
         return []
 
-def get_legacy_projects():
-    """Found projects that match our variants but don't have the managed label."""
+def get_legacy_containers():
+    """Sanity containers that still need migration to the persistent-home model.
+
+    "Needs migration" means a container that is ours (managed label, or a
+    recognizable sanity service name) but does NOT carry the
+    sanity.gravity.home-volume label — i.e. its agent state still lives in
+    the ephemeral writable layer instead of the per-project sanity_home
+    volume. This deliberately keys off the home-volume marker rather than
+    comparing the service against VALID_TAGS: the old fix compared flat
+    legacy services (core/kasm/vnc) against the *new* tag list, so it never
+    matched the very containers it was meant to find.
+
+    Returns a list of dicts: {cid, name, project, service}.
+    """
     try:
-        # 1. Find ALL projects that look like ours (based on service names)
-        # We look for containers with label com.docker.compose.service in [core, kasm, vnc]
-        # AND include stopped containers (-a)
-        cmd = "docker ps -a --format '{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.service\"}}'"
-        output = run_command(cmd, capture=True, check=False)
-        
-        candidates = set()
+        fmt = ('{{.ID}}|{{.Names}}|{{.Label "com.docker.compose.project"}}'
+               '|{{.Label "com.docker.compose.service"}}'
+               '|{{.Label "sanity.gravity.managed"}}'
+               '|{{.Label "sanity.gravity.home-volume"}}')
+        output = run_command(f"docker ps -a --format '{fmt}'", capture=True, check=False)
+        records = []
         if output:
             for line in output.splitlines():
                 parts = line.split('|')
-                if len(parts) == 2:
-                    project, service = parts
-                    if project and service in VALID_TAGS:
-                        candidates.add(project)
-        
-        # 2. Get Managed projects
-        managed = set(get_managed_projects())
-        
-        # 3. Legacy = Candidates - Managed
-        return sorted(list(candidates - managed))
+                if len(parts) != 6:
+                    continue
+                cid, name, project, service, managed, home_vol = parts
+                if not project or not service:
+                    continue
+                is_ours = (managed == "true"
+                           or service in LEGACY_SERVICES
+                           or service in VALID_TAGS)
+                if is_ours and home_vol != "true":
+                    records.append({"cid": cid, "name": name,
+                                     "project": project, "service": service})
+        return records
     except (subprocess.CalledProcessError, SystemExit) as e:
-        print_warning(f"Could not list legacy projects: {e}")
+        print_warning(f"Could not list legacy containers: {e}")
         return []
+
+def get_legacy_projects():
+    """Project names that still have at least one un-migrated container."""
+    return sorted({r["project"] for r in get_legacy_containers()})
 
 def get_active_projects():
     """Returns a list of active Sanity-Gravity project names (Strict Mode)."""
@@ -1055,130 +1112,183 @@ def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('127.0.0.1', port)) == 0
 
+def run_step(cmd, capture=False):
+    """Run one migration step; raise RuntimeError with stderr on failure.
+
+    Unlike run_command, never calls sys.exit — the caller needs to catch
+    failures so a half-done migration can report exactly where it stopped.
+    """
+    if not capture:
+        print(f"{Colors.OKBLUE}$ {cmd}{Colors.ENDC}")
+    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout or "").strip() or f"exit {r.returncode}")
+    return r.stdout.strip()
+
 def upgrade(args):
-    """Upgrades legacy containers to managed containers."""
-    legacy = get_legacy_projects()
-    
-    # Filter if specific name requested
+    """Losslessly migrate legacy / pre-volume containers to the persistent-home model.
+
+    For each container that still keeps its agent state in the ephemeral
+    writable layer: snapshot it, recreate it on the new per-tag compose
+    (which now mounts a per-project sanity_home volume), seed that volume
+    from the snapshot, then start it. The snapshot image is kept as a
+    rollback point. The old container is only removed once its data is
+    safely captured in the snapshot — nothing is destroyed before that.
+    """
+    records = get_legacy_containers()
+
     target = getattr(args, "name", "sanity-gravity")
     if target != "sanity-gravity":
-        if target in legacy:
-            legacy = [target]
-        else:
-            print_error(f"Project '{target}' is not identified as a legacy container.")
-            if legacy:
-                print(f"Detected legacy projects: {', '.join(legacy)}")
+        records = [r for r in records if r["project"] == target]
+        if not records:
+            print_error(f"Project '{target}' has no container needing migration.")
+            others = get_legacy_projects()
+            if others:
+                print(f"Projects needing migration: {', '.join(others)}")
             return
 
-    if not legacy:
-        print_success("All system components are up to date.")
+    if not records:
+        print_success("All containers already use the persistent-home volume. Nothing to migrate.")
         return
 
-    print_header("Found Legacy Containers")
-    for p in legacy:
-        print(f" - {p}")
-    
-    print(f"\n{Colors.WARNING}This will recreate the containers to apply new management labels.{Colors.ENDC}")
-    print("Data in volumes will be preserved, but running processes will be interrupted.")
-    
-    # Check for interactive mode or force flag? 
-    # args doesn't strictly have force flag but we can ask user.
+    # Resolve the target tag for each container; drop unmappable ones.
+    plan = []
+    for r in records:
+        t = legacy_target_tag(r["service"])
+        if not t:
+            print_warning(f"Skipping {r['name']}: cannot map service '{r['service']}' to a known tag.")
+            continue
+        plan.append({**r, "tag": t})
+    if not plan:
+        print_error("Nothing migratable.")
+        return
+
+    print_header("Lossless Migration Plan")
+    print("Each container is snapshotted, its entire home (agent state, logins,")
+    print("history — everything outside ./workspace) copied into a new")
+    print("per-project volume, then recreated. The snapshot image is kept so")
+    print("you can roll back. The old container is removed only after its data")
+    print("is safely captured.\n")
+    for item in plan:
+        print(f"  {item['name']}  [{item['project']}]  {item['service']} -> {item['tag']}")
+    print()
+
     if sys.stdin.isatty():
-        choice = input(f"{Colors.BOLD}Proceed with upgrade? [y/N]: {Colors.ENDC}").lower().strip()
+        choice = input(f"{Colors.BOLD}Proceed with lossless migration? [y/N]: {Colors.ENDC}").lower().strip()
         if choice != 'y':
-            print_info("Upgrade cancelled.")
+            print_info("Migration cancelled.")
             return
     else:
-        print_warning("Non-interactive mode: Auto-proceeding with upgrade.")
+        print_warning("Non-interactive mode: auto-proceeding.")
 
-    # Get current user info for fallback
     host_uid, host_gid, host_user = get_uid_gid_user()
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    ok, failed = [], []
 
-    for p in legacy:
+    for item in plan:
+        p, s, cid, name, tag = (item["project"], item["service"], item["cid"],
+                                item["name"], item["tag"])
+        backup_img = f"sanity-migrate/{p}-{s}:{ts}"
+        print_header(f"Migrating {name} ({s} -> {tag})")
+        stage = "snapshot"
         try:
-            print_info(f"Upgrading {p}...")
-            
-            # Find running services for this project
-            # Use -a to find stopped containers too
-            cmd = f"docker ps -a --filter \"label=com.docker.compose.project={p}\" --format '{{{{.Label \"com.docker.compose.service\"}}}}'"
-            services_out = run_command(cmd, capture=True, check=False)
-            if not services_out:
-                print_error(f"Could not determine services for {p}. Skipping.")
-                continue
-                
-            services = set(services_out.splitlines())
-            
-            # Get Environment Variables
+            validate_project_name(p)
+
+            # 1. Safety snapshot. The old container is still running and is
+            #    not touched until step 4 — if anything here fails it stays
+            #    intact.
+            print_info(f"Snapshotting -> {backup_img}")
+            run_step(f"docker commit {cid} {backup_img}")
+
+            # 2. Recover environment from the old container.
             env_vars = get_project_env(p)
-            
-            # Fallback for User
-            if "HOST_USER" not in env_vars: env_vars["HOST_USER"] = host_user
-            if "HOST_UID" not in env_vars: env_vars["HOST_UID"] = str(host_uid)
-            if "HOST_GID" not in env_vars: env_vars["HOST_GID"] = str(host_gid)
-            
-            username = env_vars["HOST_USER"]
-            
-            # Fallback for Ports
-            # If explicit ports are missing, check availablity or default to ephemeral (0)
-            # This avoids port collisions during recreation.
-            
-            if "SSH_HOST_PORT" not in env_vars:
-                if p != "sanity-gravity" or is_port_in_use(2222):
-                    env_vars["SSH_HOST_PORT"] = "0"
-            
-            if "KASM_PORT" not in env_vars:
-                if p != "sanity-gravity" or is_port_in_use(8444):
-                    env_vars["KASM_PORT"] = "0"
+            env_vars.setdefault("HOST_USER", host_user)
+            env_vars.setdefault("HOST_UID", str(host_uid))
+            env_vars.setdefault("HOST_GID", str(host_gid))
+            # Let docker assign free host ports to avoid collisions on recreate.
+            for k, port in (("SSH_HOST_PORT", 2222), ("KASM_PORT", 8444),
+                            ("VNC_PORT", 5901), ("NOVNC_PORT", 6901)):
+                if k not in env_vars and (p != "sanity-gravity" or is_port_in_use(port)):
+                    env_vars[k] = "0"
+            username = validate_username(env_vars["HOST_USER"])
+            env_str = " ".join(f"{k}={v}" for k, v in env_vars.items())
 
-            if "VNC_PORT" not in env_vars:
-                if p != "sanity-gravity" or is_port_in_use(5901):
-                    env_vars["VNC_PORT"] = "0"
+            # 3. Generate the new per-tag compose (+ git overlay). The tag
+            #    compose now declares the sanity_home volume.
+            tag_compose, _ = generate_compose_for_tag(tag)
+            compose_files = f"-f {tag_compose}"
+            # Scope the git overlay to THIS tag only. Without a service
+            # arg generate_git_compose emits every VALID_TAG as an
+            # image-less service, and `compose create` rejects the
+            # project ("service ag-xfce-ssh has neither an image nor a
+            # build context"). The up flow passes the tag for the same
+            # reason; the pre-rewrite upgrade omitted it (latent bug).
+            git_compose = generate_git_compose(username, tag)
+            if git_compose:
+                compose_files += f" -f {git_compose}"
 
-            if "NOVNC_PORT" not in env_vars:
-                if p != "sanity-gravity" or is_port_in_use(6901):
-                    env_vars["NOVNC_PORT"] = "0"
+            # 4. Remove the old container. Its data is already in backup_img.
+            stage = "old-removed"
+            print_info("Removing old container (data preserved in snapshot)...")
+            run_step(f"docker rm -f {cid}")
 
-            env_str = " ".join([f"{k}={v}" for k, v in env_vars.items()])
+            # 5. Create (do not start) the new container so its sanity_home
+            #    volume exists but is still empty.
+            run_step(f"{env_str} docker compose -p {p} {compose_files} "
+                     f"create --force-recreate {tag}")
 
-            for s in services:
-                if s in VALID_TAGS:
-                    print_info(f"Recreating {p} ({s})...")
-                    
-                    container_name = f"{p}-{s}-1"
-                    
-                    # Prepare Compose Files. Unlike restart/down (which use the
-                    # project label), `up --force-recreate` needs a real compose
-                    # file, so regenerate the per-tag compose just like `up`
-                    # does — not the root docker-compose.yml deleted in PR #10.
-                    tag_compose, _ = generate_compose_for_tag(s)
-                    compose_files = f"-f {tag_compose}"
+            # 6. Find the named volume mounted at the home dir.
+            new_name = f"{p}-{tag}-1"
+            vol = run_step(
+                "docker inspect " + new_name + " --format "
+                "'{{range .Mounts}}{{if eq .Destination \"/home/"
+                + username + "\"}}{{.Name}}{{end}}{{end}}'",
+                capture=True)
+            if not vol:
+                raise RuntimeError(f"no home volume found on {new_name}")
 
-                    # Git Context
-                    git_compose = generate_git_compose(username)
-                    if git_compose:
-                        compose_files += f" -f {git_compose}"
-                    
-                    # CRITICAL: Remove the old container to avoid name conflicts
-                    # This is especially important if the old container was created via 'docker run'
-                    # or is in a state where Compose can't atomic swap it.
-                    # We already have the env vars, so it's safe to destroy the old vessel.
-                    try:
-                        # Find container id for this specific service
-                        cmd_find = f"docker ps -a -q --filter \"label=com.docker.compose.project={p}\" --filter \"label=com.docker.compose.service={s}\""
-                        cid = run_command(cmd_find, capture=True, check=False)
-                        if cid:
-                             run_command(f"docker rm -f {cid}", check=False)
-                    except subprocess.CalledProcessError:
-                        pass # Ignore errors here, compose execution is the real test
+            # 7. Seed the volume from the snapshot — the whole home including
+            #    dotfiles. workspace/.gitconfig are re-bind-mounted from the
+            #    host at runtime, so their snapshot copies (empty) are moot.
+            stage = "seeding"
+            print_info(f"Seeding volume {vol} from snapshot...")
+            run_step(f"docker run --rm --entrypoint bash -v {vol}:/dest "
+                     f"{backup_img} -lc 'shopt -s dotglob; "
+                     f"cp -a /home/{username}/. /dest/'")
 
-                    # Execute Recreate
-                    # We use --force-recreate to ensure labels are applied
-                    cmd = f"{env_str} docker compose -p {p} {compose_files} up -d --force-recreate {s}"
-                    run_command(cmd)
+            # 8. Start it. The volume is now non-empty, so docker will not
+            #    overlay the image's /home; entrypoint chowns it to the
+            #    runtime user.
+            stage = "starting"
+            run_step(f"{env_str} docker compose -p {p} {compose_files} start {tag}")
+
+            if not run_step(f"docker ps -q --filter name=^{new_name}$", capture=True):
+                raise RuntimeError(f"{new_name} did not come up")
+            print_success(f"{name} migrated -> {new_name}")
+            print_info(f"Rollback image kept: {backup_img}")
+            ok.append(name)
         except Exception as e:
-            print_error(f"Failed to upgrade {p}: {e}")
-                 
-    print_success("Upgrade complete.")
+            failed.append(name)
+            print_error(f"Migration of {name} failed during '{stage}': {e}")
+            if stage == "snapshot":
+                print_warning("The old container was NOT touched — it is still intact. "
+                              "Nothing was lost.")
+            else:
+                print_warning(
+                    f"Your data is safe in image '{backup_img}'. The old container "
+                    f"was already removed. To bring the old one back as-is:\n"
+                    f"  docker run -d --name {name} {backup_img}")
+            print_warning("Stopping here so you can inspect before continuing.")
+            break
+
+    print_header("Migration Summary")
+    if ok:
+        print_success(f"Migrated: {', '.join(ok)}")
+    if failed:
+        print_error(f"Failed/aborted: {', '.join(failed)}")
+    if ok and not failed:
+        print_info("Verify the agents work, then sanity-migrate/* (and any "
+                   "sanity-backup/*) images can be deleted to reclaim space.")
     status(args)
 
 def sync_config_cmd(args):
