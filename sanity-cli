@@ -10,7 +10,8 @@ import socket
 import webbrowser
 
 # Configuration
-COMPOSE_FILE = "docker-compose.yml"
+# NOTE: there is no single root docker-compose.yml. The modular-tag layout
+# (PR #10 c5a90a3) generates per-tag composes at config/docker-compose.<tag>.yml.
 SANDBOX_DIR = "sandbox"
 
 # Dimension Registry: {slug: {name, requires_gui}}
@@ -942,20 +943,15 @@ def run_compose_cmd(args, action, check_existence=False):
     
     print_header(f"{action.capitalize()}ing Sandbox ({project_name})")
     
-    # Find the compose file used by this project (check config dir first, then legacy)
-    config_dir = "config"
-    compose_files = []
-    if os.path.exists(config_dir):
-        for f in os.listdir(config_dir):
-            if f.startswith("docker-compose.") and f.endswith(".yml") and not f.endswith(".git.yml") and not f.endswith(".resources.yml"):
-                compose_files.append(os.path.join(config_dir, f))
-
-    if compose_files:
-        compose_flags = " ".join(f"-f {cf}" for cf in compose_files)
-    else:
-        compose_flags = f"-f {COMPOSE_FILE}"
-
-    cmd = f"{env_str} docker compose -p {project_name} {compose_flags} {action}"
+    # No -f: restart/stop/start/down resolve containers purely via the
+    # `-p <project>` label — same rationale as `ps`/`port`/`status` in d5e29d2.
+    # The old `-f docker-compose.yml` fallback pointed at a path deleted in
+    # PR #10 (c5a90a3, modular-tag layout), making `restart` fail with "no such
+    # file or directory". Scanning config/ for per-tag composes is also wrong
+    # here: their service names (e.g. ag-xfce-kasm) don't match a project's
+    # actual running service (e.g. legacy `kasm`), so `restart` would silently
+    # no-op. The project label is the only correct selector for these verbs.
+    cmd = f"{env_str} docker compose -p {project_name} {action}"
     run_command(cmd)
     
     if action == "down":
@@ -992,15 +988,12 @@ def clean(args):
     # -v: Remove named volumes (clears user config/session)
     # --rmi local: Remove local images
     # --remove-orphans: Remove containers not defined in the compose file
-    # Find compose files for this project
-    config_dir = "config"
-    compose_files = []
-    if os.path.exists(config_dir):
-        for f in os.listdir(config_dir):
-            if f.startswith("docker-compose.") and f.endswith(".yml") and not f.endswith(".git.yml") and not f.endswith(".resources.yml"):
-                compose_files.append(os.path.join(config_dir, f))
-    compose_flags = " ".join(f"-f {cf}" for cf in compose_files) if compose_files else f"-f {COMPOSE_FILE}"
-    cmd = f"docker compose -p {project_name} {compose_flags} down -v --rmi local --remove-orphans"
+    # No -f: `down` (incl. -v / --rmi local / --remove-orphans) resolves the
+    # project purely via its `-p <project>` label — same rationale as
+    # restart/stop/start/down and as `status` in d5e29d2. Scanning config/ for
+    # per-tag composes is wrong here (service-name mismatch with legacy
+    # containers) and the old docker-compose.yml fallback was deleted in PR #10.
+    cmd = f"docker compose -p {project_name} down -v --rmi local --remove-orphans"
     
     if not args.force:
         print(f"{Colors.WARNING}CAUTION: This will destroy ALL data in volumes for project '{project_name}'.{Colors.ENDC}")
@@ -1153,8 +1146,12 @@ def upgrade(args):
                     
                     container_name = f"{p}-{s}-1"
                     
-                    # Prepare Compose Files
-                    compose_files = f"-f {COMPOSE_FILE}"
+                    # Prepare Compose Files. Unlike restart/down (which use the
+                    # project label), `up --force-recreate` needs a real compose
+                    # file, so regenerate the per-tag compose just like `up`
+                    # does — not the root docker-compose.yml deleted in PR #10.
+                    tag_compose, _ = generate_compose_for_tag(s)
+                    compose_files = f"-f {tag_compose}"
 
                     # Git Context
                     git_compose = generate_git_compose(username)
