@@ -97,8 +97,18 @@ def generate_compose_for_tag(tag):
         image=image,
         command=["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"],
         environment=environment,
+        # Persistence model: the whole home dir lives on a per-project
+        # named volume (compose namespaces it as ``<project>_sanity_home``)
+        # so agent state outside ./workspace — ~/.gemini, ~/.config,
+        # ~/.antigravity, ~/.claude, logins, history — survives container
+        # recreation / upgrade instead of dying with the writable layer.
+        # Docker seeds an empty volume from the image's /home; entrypoint
+        # chowns it each start. The workspace host bind is nested inside
+        # and stays the source of truth for code. ``home-volume`` label
+        # lets `upgrade` tell migrated containers from un-migrated ones.
         volumes=[
-            "${WORKSPACE_DIR:-./workspace}:/home/${HOST_USER:-developer}/workspace"
+            "sanity_home:/home/${HOST_USER:-developer}",
+            "${WORKSPACE_DIR:-./workspace}:/home/${HOST_USER:-developer}/workspace",
         ],
         ports=ports,
         network_mode="bridge",
@@ -106,12 +116,20 @@ def generate_compose_for_tag(tag):
         restart=restart,
         stop_grace_period=stop_grace_period,
         ulimits={"nofile": {"soft": 65536, "hard": 65536}},
-        labels={"sanity.gravity.managed": "true"},
+        labels={
+            "sanity.gravity.managed": "true",
+            "sanity.gravity.home-volume": "true",
+        },
     )
 
     config_dir = "config"
     output_file = os.path.join(config_dir, f"docker-compose.{tag}.yml")
-    ComposeBuilder().add_service(svc).write(output_file)
+    (
+        ComposeBuilder()
+        .add_service(svc)
+        .declare_volume("sanity_home")
+        .write(output_file)
+    )
 
     return output_file, service_name
 

@@ -108,10 +108,15 @@ class ComposeService:
 class ComposeBuilder:
     """Accumulates services and merges overlays, then renders to YAML."""
 
-    __slots__ = ("services",)
+    __slots__ = ("services", "volumes")
 
     def __init__(self) -> None:
         self.services: dict[str, ComposeService] = {}
+        # Top-level named volumes. Maps volume name -> config dict (or
+        # None for a default-configured volume, which YAML renders as a
+        # bare ``<name>:`` line — what docker-compose wants for a simple
+        # per-project named volume).
+        self.volumes: dict[str, dict[str, Any] | None] = {}
 
     # -- service management ------------------------------------------
 
@@ -132,6 +137,21 @@ class ComposeBuilder:
             if not hasattr(svc, k):
                 raise AttributeError(f"ComposeService has no field {k!r}")
             setattr(svc, k, v)
+        return self
+
+    def declare_volume(
+        self,
+        name: str,
+        config: dict[str, Any] | None = None,
+    ) -> "ComposeBuilder":
+        """Declare a top-level named volume.
+
+        ``config=None`` (the default) emits a bare ``<name>:`` entry —
+        a docker-managed volume with default settings, which is what a
+        simple per-project persistent volume needs. Re-declaring the
+        same name is idempotent (last config wins).
+        """
+        self.volumes[name] = config
         return self
 
     # -- additive merges ---------------------------------------------
@@ -197,7 +217,17 @@ class ComposeBuilder:
     # -- rendering ---------------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
-        return {"services": {n: s.to_dict() for n, s in self.services.items()}}
+        out: dict[str, Any] = {
+            "services": {n: s.to_dict() for n, s in self.services.items()}
+        }
+        if self.volumes:
+            # ``{name: None}`` round-trips through yaml.safe_dump as a
+            # bare ``name:`` line — the canonical default-volume form.
+            out["volumes"] = {
+                n: (_deepcopy_dict(c) if c else None)
+                for n, c in self.volumes.items()
+            }
+        return out
 
     def render(self) -> str:
         """Emit the compose document as a YAML string.

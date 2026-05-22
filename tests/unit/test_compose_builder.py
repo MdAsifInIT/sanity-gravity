@@ -98,6 +98,33 @@ def test_builder_merge_environment_is_additive():
     assert builder.services["svc"].environment == {"A": "3", "B": "2"}
 
 
+def test_builder_declare_volume_emits_top_level_volumes():
+    """A declared named volume appears under a top-level ``volumes:`` key."""
+    import yaml
+
+    builder = ComposeBuilder().add_service(ComposeService(name="svc", image="alpine"))
+    builder.declare_volume("sanity_home")
+    doc = yaml.safe_load(builder.render())
+    assert "volumes" in doc
+    assert "sanity_home" in doc["volumes"]
+    # A config-less volume renders as a null value (compose treats it as
+    # a default docker-managed volume).
+    assert doc["volumes"]["sanity_home"] is None
+
+
+def test_builder_no_volumes_key_when_none_declared():
+    """``volumes:`` must be absent entirely when no named volume is declared."""
+    builder = ComposeBuilder().add_service(ComposeService(name="svc", image="alpine"))
+    assert "volumes" not in builder.to_dict()
+
+
+def test_builder_declare_volume_idempotent():
+    """Re-declaring the same volume name does not duplicate it."""
+    builder = ComposeBuilder().add_service(ComposeService(name="svc", image="alpine"))
+    builder.declare_volume("v").declare_volume("v")
+    assert list(builder.volumes) == ["v"]
+
+
 def test_builder_set_deploy_resources_quotes_numeric_strings():
     """cpus='1.5' must become a quoted YAML string, not a float."""
     builder = ComposeBuilder().add_service(ComposeService(name="svc", image="alpine"))
@@ -190,7 +217,18 @@ def test_snapshot_generate_compose_for_tag_kasm(tmp_path, monkeypatch):
     assert svc["stop_grace_period"] == "30s"
     # ulimits + labels carried over from the legacy template.
     assert svc["ulimits"] == {"nofile": {"soft": 65536, "hard": 65536}}
-    assert svc["labels"] == {"sanity.gravity.managed": "true"}
+    assert svc["labels"] == {
+        "sanity.gravity.managed": "true",
+        "sanity.gravity.home-volume": "true",
+    }
+    # Persistent-home model: the sanity_home named volume is mounted at
+    # the home dir, the workspace bind nested inside, and the volume is
+    # declared at the top level.
+    assert svc["volumes"] == [
+        "sanity_home:/home/${HOST_USER:-developer}",
+        "${WORKSPACE_DIR:-./workspace}:/home/${HOST_USER:-developer}/workspace",
+    ]
+    assert "sanity_home" in parsed["volumes"]
 
 
 def test_snapshot_generate_resource_compose(tmp_path, monkeypatch):
