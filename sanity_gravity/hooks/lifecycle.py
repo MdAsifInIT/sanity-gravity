@@ -3,42 +3,27 @@
 
 Phase split:
 - ``LIFECYCLE_BEFORE`` — for ``down``: verify the project exists; for ``clean``:
-  prompt for confirmation. Always: resolve compose files + recover env.
+  prompt for confirmation. Always: recover env from a running container.
 - ``LIFECYCLE_DOCKER`` — enqueue the ``docker compose <action>`` Action.
 - ``LIFECYCLE_AFTER`` — emit the success message keyed off the action verb.
+
+These verbs resolve containers purely via the ``-p <project>`` label and
+need no compose file. An earlier design scanned ``config/`` for per-tag
+composes and passed them with ``-f``; that was wrong twice over — the
+per-tag service names (``ag-xfce-kasm``) don't match a legacy project's
+running service (``kasm``) so ``restart`` silently no-op'd, and the
+empty-scan fallback pointed at a ``docker-compose.yml`` that no longer
+exists. See upstream commit 9457bfd.
 """
 from __future__ import annotations
 
-import os
 import sys
-from pathlib import Path
 
 from sanity_gravity.cli.colors import Colors
 from sanity_gravity.core.command import CommandBuilder
 from sanity_gravity.core.eventbus import EventBus, get_default_bus
 from sanity_gravity.domain.phase import Phase
 from sanity_gravity.effects.actions import RunSubprocess
-
-
-COMPOSE_FILE = "docker-compose.yml"
-
-
-def _project_compose_files() -> list[str]:
-    """Find the compose files for a project (config/ first, legacy fallback)."""
-    config_dir = "config"
-    out: list[str] = []
-    if os.path.exists(config_dir):
-        for f in os.listdir(config_dir):
-            if (
-                f.startswith("docker-compose.")
-                and f.endswith(".yml")
-                and not f.endswith(".git.yml")
-                and not f.endswith(".resources.yml")
-            ):
-                out.append(os.path.join(config_dir, f))
-    if not out:
-        out = [COMPOSE_FILE]
-    return out
 
 
 def lifecycle_check_existence(ctx) -> None:
@@ -89,15 +74,6 @@ def lifecycle_clean_prompt(ctx) -> None:
             ctx.cancelled = True
 
 
-def lifecycle_resolve_compose(ctx) -> None:
-    """LIFECYCLE_BEFORE/200: populate ctx.compose_files."""
-    if getattr(ctx, "project_exists", True) is False:
-        return
-    if getattr(ctx, "cancelled", False):
-        return
-    ctx.compose_files = [Path(p) for p in _project_compose_files()]
-
-
 def lifecycle_recover_env(ctx) -> None:
     """LIFECYCLE_BEFORE/300: recover environment from a running container.
 
@@ -122,7 +98,7 @@ def _emit_header(ctx) -> None:
 
 
 def lifecycle_compose_action(ctx) -> None:
-    """LIFECYCLE_DOCKER/100: enqueue ``docker compose -p <name> -f ... <action>``."""
+    """LIFECYCLE_DOCKER/100: enqueue ``docker compose -p <name> <action>``."""
     if getattr(ctx, "project_exists", True) is False:
         return
     if getattr(ctx, "cancelled", False):
@@ -141,9 +117,10 @@ def lifecycle_compose_action(ctx) -> None:
     else:
         ctx.reporter.header(f"{label_word} Sandbox ({ctx.project})")
 
+    # No -f: the project label is the only correct container selector
+    # for restart/stop/start/down/clean. (Compose files are needed only
+    # by `up` / `upgrade`, which create containers.)
     cb = CommandBuilder("docker", "compose", "-p", ctx.project)
-    for cf in ctx.compose_files:
-        cb.opt("-f", str(cf))
     cb.positional(ctx.action, *ctx.extra_action_args)
     ctx.actions.append(RunSubprocess(argv=cb.build(), env=dict(ctx.env) or None))
 
@@ -183,7 +160,6 @@ def register_builtin_lifecycle_hooks(bus: EventBus) -> None:
     bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_clean_prompt, priority=50)
     bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_check_existence,
                   priority=100, skip_in_dry_run=True)
-    bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_resolve_compose, priority=200)
     bus.subscribe(Phase.LIFECYCLE_BEFORE, lifecycle_recover_env,
                   priority=300, skip_in_dry_run=True)
     bus.subscribe(Phase.LIFECYCLE_DOCKER, lifecycle_compose_action, priority=100)

@@ -42,16 +42,18 @@ def _ctx(action="down", project="my-proj", **kw):
 
 @pytest.fixture(autouse=True)
 def _stub_lifecycle_helpers():
-    """Stub the docker-touching helpers in lifecycle_hooks."""
+    """Stub the docker-touching helpers in lifecycle_hooks.
+
+    Lifecycle verbs no longer scan ``config/`` for compose files (they
+    resolve containers purely via the ``-p <project>`` label), so there
+    is nothing compose-file-related to stub anymore.
+    """
     with patch(
         "sanity_gravity.verbs.lifecycle.get_active_projects",
         return_value=["my-proj"],
     ), patch(
         "sanity_gravity.verbs.lifecycle.get_project_env",
         return_value={"HOST_USER": "dev"},
-    ), patch(
-        "sanity_gravity.hooks.lifecycle._project_compose_files",
-        return_value=["config/docker-compose.tag.yml"],
     ):
         yield
 
