@@ -32,7 +32,31 @@ from sanity_gravity.effects.executor import build_default_executor
 from sanity_gravity.hooks.lifecycle import register_builtin_lifecycle_hooks
 
 
-COMPOSE_FILE = "docker-compose.yml"
+# Flat service names used by containers created before the modular-tag
+# layout (PR #10). They map to ``ag-xfce-<connector>`` on migration.
+LEGACY_SERVICES = {"core", "kasm", "vnc"}
+_LEGACY_CONNECTOR = {"core": "ssh", "kasm": "kasm", "vnc": "vnc"}
+
+
+def legacy_target_tag(service):
+    """Map an old / managed service name to the tag it migrates to.
+
+    A flat legacy service (core/kasm/vnc) becomes ``ag-xfce-<connector>``
+    (migration assumes the default agent=antigravity, desktop=xfce; only
+    the connector carries over). A service that is already a valid tag —
+    a managed container created before the persistent-home model — keeps
+    its tag and migrates in place, the point being only to attach the
+    ``sanity_home`` volume. Returns the target tag, or ``None`` if the
+    service cannot be mapped.
+    """
+    if service in VALID_TAGS:
+        return service
+    conn = _LEGACY_CONNECTOR.get(service)
+    if conn:
+        candidate = f"ag-xfce-{conn}"
+        if candidate in VALID_TAGS:
+            return candidate
+    return None
 
 
 def get_managed_projects():
@@ -52,31 +76,62 @@ def get_managed_projects():
         return []
 
 
-def get_legacy_projects():
-    """Return projects that match our variants but lack the managed label."""
-    try:
-        cmd = (
-            "docker", "ps", "-a",
-            "--format",
-            '{{.Label "com.docker.compose.project"}}|'
-            '{{.Label "com.docker.compose.service"}}',
-        )
-        output = run_command(cmd, capture=True, check=False)
+def get_legacy_containers():
+    """Sanity containers that still need migration to the persistent-home model.
 
-        candidates = set()
+    "Needs migration" means a container that is ours — managed label, or
+    a recognizable sanity service name — but does NOT carry the
+    ``sanity.gravity.home-volume`` label, i.e. its agent state still
+    lives in the ephemeral writable layer instead of the per-project
+    ``sanity_home`` volume.
+
+    This keys off the home-volume marker rather than comparing the
+    service against ``VALID_TAGS``: genuine legacy containers have flat
+    service names (``core`` / ``kasm`` / ``vnc``) that are not in the
+    *new* tag list, so the old ``service in VALID_TAGS`` test never
+    matched the very containers it was meant to find.
+
+    Returns a list of dicts ``{cid, name, project, service}``.
+    """
+    try:
+        fmt = (
+            '{{.ID}}|{{.Names}}|'
+            '{{.Label "com.docker.compose.project"}}|'
+            '{{.Label "com.docker.compose.service"}}|'
+            '{{.Label "sanity.gravity.managed"}}|'
+            '{{.Label "sanity.gravity.home-volume"}}'
+        )
+        output = run_command(
+            ("docker", "ps", "-a", "--format", fmt), capture=True, check=False,
+        )
+        records = []
         if output:
             for line in output.splitlines():
-                parts = line.split('|')
-                if len(parts) == 2:
-                    project, service = parts
-                    if project and service in VALID_TAGS:
-                        candidates.add(project)
-
-        managed = set(get_managed_projects())
-        return sorted(list(candidates - managed))
+                parts = line.split("|")
+                if len(parts) != 6:
+                    continue
+                cid, name, project, service, managed, home_vol = parts
+                if not project or not service:
+                    continue
+                is_ours = (
+                    managed == "true"
+                    or service in LEGACY_SERVICES
+                    or service in VALID_TAGS
+                )
+                if is_ours and home_vol != "true":
+                    records.append({
+                        "cid": cid, "name": name,
+                        "project": project, "service": service,
+                    })
+        return records
     except (subprocess.CalledProcessError, SystemExit) as e:
-        print_warning(f"Could not list legacy projects: {e}")
+        print_warning(f"Could not list legacy containers: {e}")
         return []
+
+
+def get_legacy_projects():
+    """Project names that still have at least one un-migrated container."""
+    return sorted({r["project"] for r in get_legacy_containers()})
 
 
 def get_active_projects():
