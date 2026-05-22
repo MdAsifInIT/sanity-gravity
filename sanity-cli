@@ -958,8 +958,37 @@ def get_project_env(project_name):
                 return env_map
         except (subprocess.CalledProcessError, ValueError, SystemExit):
             continue
-            
+
     return {}
+
+def get_published_ports(container_id):
+    """Recover a container's configured host port bindings as sanity env vars.
+
+    upgrade uses this so a migrated container keeps the same SSH/KASM/VNC/noVNC
+    host ports its predecessor had. We read .HostConfig.PortBindings (the
+    configured intent) rather than .NetworkSettings.Ports (the live mapping):
+    a port the user left ephemeral shows here as "0" and should stay ephemeral
+    on the new container, not get pinned to whatever number docker assigned.
+
+    get_project_env cannot supply these — it keys container names off
+    VALID_TAGS so it never matches a legacy <project>-<core|kasm|vnc>-1, and
+    the ports were never compose `environment:` vars in the first place.
+
+    Returns {ENV_VAR: "host_port"} for whichever connector ports are bound.
+    """
+    cport_to_env = {"22/tcp": "SSH_HOST_PORT", "8444/tcp": "KASM_PORT",
+                    "5901/tcp": "VNC_PORT", "6901/tcp": "NOVNC_PORT"}
+    fmt = ('{{range $p, $c := .HostConfig.PortBindings}}{{if $c}}'
+           '{{$p}}={{(index $c 0).HostPort}} {{end}}{{end}}')
+    out = run_command(f"docker inspect {container_id} --format '{fmt}'",
+                      capture=True, check=False)
+    result = {}
+    for token in (out or "").split():
+        cport, _, host_port = token.partition("=")
+        env_key = cport_to_env.get(cport)
+        if env_key and host_port:
+            result[env_key] = host_port
+    return result
 
 def run_compose_cmd(args, action, check_existence=False):
     """Helper to run docker compose commands with recovered environment."""
@@ -1205,7 +1234,13 @@ def upgrade(args):
             env_vars.setdefault("HOST_USER", host_user)
             env_vars.setdefault("HOST_UID", str(host_uid))
             env_vars.setdefault("HOST_GID", str(host_gid))
-            # Let docker assign free host ports to avoid collisions on recreate.
+            # Preserve the old container's host port bindings so the migrated
+            # container stays reachable on the same SSH/KASM/VNC ports. This
+            # runs while the old container still exists (removed at step 4).
+            for env_key, host_port in get_published_ports(cid).items():
+                env_vars.setdefault(env_key, host_port)
+            # Any port still unknown: let docker assign a free one rather than
+            # risk a collision on recreate.
             for k, port in (("SSH_HOST_PORT", 2222), ("KASM_PORT", 8444),
                             ("VNC_PORT", 5901), ("NOVNC_PORT", 6901)):
                 if k not in env_vars and (p != "sanity-gravity" or is_port_in_use(port)):
