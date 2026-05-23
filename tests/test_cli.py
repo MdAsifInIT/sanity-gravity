@@ -39,11 +39,11 @@ class TestCLI:
     def test_cli_lifecycle(self, cli, clean_container):
         """Test run -> status -> stop flow."""
         # Clean up in case
-        cli("stop")
+        cli("down")
         
         # Test Run (ag-xfce-ssh is the lightest GUI-less variant)
         # sanity-cli up uses 'docker compose up -d' so it returns.
-        res = cli("run -v ag-xfce-ssh --ssh-port 2299 --skip-check --password testcli")
+        res = cli("up -v ag-xfce-ssh --ssh-port 2299 --skip-check --password testcli")
         assert res.returncode == 0
         assert "ag-xfce-ssh is running" in res.stdout
         

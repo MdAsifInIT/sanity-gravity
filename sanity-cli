@@ -443,7 +443,7 @@ def generate_compose_for_tag(tag):
     env_str = "\n".join(env_lines)
 
     # Persistence model: the whole home dir lives on a per-project named
-    # volume (compose namespaces it as <project>_sanity_home), so agent
+    # volume (explicitly defined as sg-<project>-<tag>), so agent
     # state outside ./workspace — ~/.gemini, ~/.config, ~/.antigravity,
     # ~/.claude, logins, history — survives container recreation/upgrade
     # instead of dying with the writable layer. On first use Docker seeds
@@ -459,7 +459,7 @@ def generate_compose_for_tag(tag):
     environment:
 {env_str}
     volumes:
-      - sanity_home:/home/${{HOST_USER:-developer}}
+      - sg_{tag}:/home/${{HOST_USER:-developer}}
       - ${{WORKSPACE_DIR:-./workspace}}:/home/${{HOST_USER:-developer}}/workspace
     ports:
 {ports_str}
@@ -473,7 +473,8 @@ def generate_compose_for_tag(tag):
       sanity.gravity.home-volume: "true"
 
 volumes:
-  sanity_home:
+  sg_{tag}:
+    name: "sg-${{COMPOSE_PROJECT_NAME:-sanity-gravity}}-{tag}"
 """
 
     config_dir = "config"
@@ -573,6 +574,19 @@ def up(args):
     kasm_port = args.kasm_port
     vnc_port = args.vnc_port
     novnc_port = args.novnc_port
+
+    # Collision Detection
+    container_name = f"{args.name}-{target}-1"
+    out = run_command(f"docker ps -a -q -f name=^{container_name}$", capture=True, check=False)
+    if out and out.strip() != "":
+        if not getattr(args, 'recreate', False):
+            print_error(f"Sandbox container '{container_name}' already exists!")
+            print_info("To wake it up, use 'sanity-cli start'.")
+            print_info("To apply new settings and recreate it, use 'sanity-cli up --recreate'.")
+            print_info("To completely destroy it, use 'sanity-cli clean'.")
+            sys.exit(1)
+        else:
+            print_warning(f"Recreating existing sandbox '{container_name}' as requested.")
 
     # Generate compose file for this tag
     tag_compose, service_name = generate_compose_for_tag(target)
@@ -1877,7 +1891,7 @@ def main():
     parser_install.add_argument("variant", nargs="*", help="Tag to install (default: all)", default=["all"])
     parser_install.set_defaults(func=install)
 
-    # Shared up/run arguments
+    # Up arguments
     def add_up_args(p):
         p.add_argument("--variant", "-v", required=True, help=f"Tag to run (e.g. {DEFAULT_TAG})")
         p.add_argument("--ssh-port", "-p", default="2222", help="Host port for SSH (default: 2222)")
@@ -1891,15 +1905,14 @@ def main():
         p.add_argument("--cpus", default=None, help="CPU limit (e.g. 1.5)")
         p.add_argument("--memory", default=None, help="Memory limit (e.g. 4G)")
         p.add_argument("--image", default=None, help="Use custom base image (Snapshot)")
+        p.add_argument("--recreate", action="store_true", help="Force recreate if sandbox already exists")
         p.set_defaults(func=up)
 
     # Up Command
     parser_up = subparsers.add_parser("up", help="Create and start sandbox (docker compose up)")
     add_up_args(parser_up)
 
-    # Run Command (Alias for Up)
-    parser_run = subparsers.add_parser("run", help="Alias for 'up'")
-    add_up_args(parser_run)
+
 
     # Down Command (formerly Stop)
     parser_down = subparsers.add_parser("down", help="Stop and remove containers (docker compose down)")

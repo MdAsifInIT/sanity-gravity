@@ -49,7 +49,7 @@ Print all valid tags and the dimension matrix.
 
 ## Lifecycle Commands
 
-### `up` / `run`
+### `up`
 
 Create and start a sandbox container.
 
