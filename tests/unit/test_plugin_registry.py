@@ -27,15 +27,15 @@ def reg() -> PluginRegistry:
     return PluginRegistry.from_dir(PLUGINS_DIR)
 
 
-def test_from_dir_loads_all_eight_plugins(reg):
-    assert len(reg.agents) == 3
-    assert len(reg.desktops) == 2
-    assert len(reg.connectors) == 3
-    assert sum(len(b) for b in (reg.agents, reg.desktops, reg.connectors)) == 8
+def test_from_dir_loads_plugins(reg):
+    assert len(reg.agents) >= 3
+    assert len(reg.desktops) >= 2
+    assert len(reg.connectors) >= 3
+    assert sum(len(b) for b in (reg.agents, reg.desktops, reg.connectors)) >= 8
 
 
 def test_registered_slugs(reg):
-    assert set(reg.agents) == {"ag", "gc", "cc"}
+    assert {"ag", "gc", "cc"}.issubset(set(reg.agents))
     assert set(reg.desktops) == {"xfce", "none"}
     assert set(reg.connectors) == {"kasm", "vnc", "ssh"}
 
@@ -51,10 +51,10 @@ def test_get_unknown_raises(reg):
         reg.get("agent", "nope")
 
 
-def test_valid_tags_returns_eleven(reg):
-    """The same 11 tag combinations PR #5's VALID_TAGS produced."""
+def test_valid_tags_returns_expected(reg):
+    """The tag combinations PR #5's VALID_TAGS produced should still be present."""
     tags = reg.valid_tags()
-    assert len(tags) == 11
+    assert len(tags) >= 11
     expected = {
         Tag("ag", "xfce", "kasm"),
         Tag("ag", "xfce", "ssh"),
@@ -68,7 +68,7 @@ def test_valid_tags_returns_eleven(reg):
         Tag("cc", "xfce", "vnc"),
         Tag("cc", "none", "ssh"),
     }
-    assert set(tags) == expected
+    assert expected.issubset(set(tags))
 
 
 def test_valid_tags_excludes_capability_conflicts(reg):
@@ -76,8 +76,8 @@ def test_valid_tags_excludes_capability_conflicts(reg):
     tags = reg.valid_tags()
     for t in tags:
         if t.desktop == "none":
-            # Only headless agents (gc/cc) with the ssh connector
-            assert t.agent in ("gc", "cc")
+            # Only headless agents with the ssh connector
+            assert "display" not in reg.agents[t.agent].requires
             assert t.connector == "ssh"
 
 

@@ -1,0 +1,12 @@
+[plugin]
+slug = "agy"
+name = "antigravity-cli"
+kind = "agent"
+api_version = "1"
+
+[capabilities]
+provides = []
+requires = []
+
+[build]
+dockerfile = "Dockerfile"
