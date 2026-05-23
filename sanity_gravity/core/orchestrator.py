@@ -143,6 +143,13 @@ class Orchestrator:
         self.reporter = reporter
         self.executor = executor
 
+    def __enter__(self) -> Orchestrator:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        if self.executor is not None:
+            self.executor.close()
+
     def _on_isolated_error(self, hook: Any, exc: BaseException) -> None:
         """Log a plugin hook's failure to the reporter without re-raising."""
         name = getattr(hook, "name", None) or "<anon>"

@@ -185,13 +185,11 @@ def _run_lifecycle(ctx) -> None:
     register_builtin_lifecycle_hooks(bus)
     executor = build_default_executor(ctx.reporter, dry_run=ctx.dry_run)
     try:
-        try:
-            Orchestrator(bus, ctx.reporter, executor=executor).run(_LIFECYCLE_PHASES, ctx)
-        except ActionFailedError as e:
-            import sys as _sys
-            _sys.exit(e.result.exit_code or 1)
-    finally:
-        executor.close()
+        with Orchestrator(bus, ctx.reporter, executor=executor) as orch:
+            orch.run(_LIFECYCLE_PHASES, ctx)
+    except ActionFailedError as e:
+        import sys as _sys
+        _sys.exit(e.result.exit_code or 1)
 
 
 def _make_down_ctx(args, action: str, *, check_existence: bool) -> DownContext:

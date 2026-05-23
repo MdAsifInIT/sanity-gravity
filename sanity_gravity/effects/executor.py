@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import IO, Iterable
+from typing import IO, Any, Iterable
 
 from sanity_gravity.effects.actions import (
     Action,
@@ -130,6 +130,12 @@ class Executor:
                 fp.close()
             except OSError:
                 pass
+
+    def __enter__(self) -> Executor:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
 
     # -- internals ----------------------------------------------------
 

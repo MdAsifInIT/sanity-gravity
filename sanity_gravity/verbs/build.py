@@ -108,12 +108,10 @@ def build(args):
     executor = build_default_executor(reporter, dry_run=dry_run)
 
     try:
-        try:
-            Orchestrator(bus, reporter, executor=executor).run(_BUILD_PHASES, ctx)
-        except ActionFailedError as e:
-            sys.exit(e.result.exit_code or 1)
-    finally:
-        executor.close()
+        with Orchestrator(bus, reporter, executor=executor) as orch:
+            orch.run(_BUILD_PHASES, ctx)
+    except ActionFailedError as e:
+        sys.exit(e.result.exit_code or 1)
 
 
 def explain_build(args):
