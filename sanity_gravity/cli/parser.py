@@ -55,6 +55,8 @@ def _add_up_args(p):
     p.add_argument("--memory", default=None, help="Memory limit (e.g. 4G)")
     p.add_argument("--image", default=None,
                    help="Use custom base image (Snapshot)")
+    p.add_argument("--recreate", action="store_true",
+                   help="Force recreate if sandbox already exists")
     p.set_defaults(func=up)
 
 
@@ -109,9 +111,6 @@ def build_parser():
     )
     _add_up_args(p_up)
 
-    # run (alias)
-    p_run = subparsers.add_parser("run", help="Alias for 'up'")
-    _add_up_args(p_run)
 
     # down
     p_down = subparsers.add_parser(

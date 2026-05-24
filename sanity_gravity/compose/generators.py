@@ -98,7 +98,7 @@ def generate_compose_for_tag(tag):
         command=["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"],
         environment=environment,
         # Persistence model: the whole home dir lives on a per-project
-        # named volume (compose namespaces it as ``<project>_sanity_home``)
+        # named volume (explicitly defined as sg-<project>-<tag>)
         # so agent state outside ./workspace — ~/.gemini, ~/.config,
         # ~/.antigravity, ~/.claude, logins, history — survives container
         # recreation / upgrade instead of dying with the writable layer.
@@ -107,7 +107,7 @@ def generate_compose_for_tag(tag):
         # and stays the source of truth for code. ``home-volume`` label
         # lets `upgrade` tell migrated containers from un-migrated ones.
         volumes=[
-            "sanity_home:/home/${HOST_USER:-developer}",
+            f"sg_{tag}:/home/${{HOST_USER:-developer}}",
             "${WORKSPACE_DIR:-./workspace}:/home/${HOST_USER:-developer}/workspace",
         ],
         ports=ports,
@@ -127,7 +127,7 @@ def generate_compose_for_tag(tag):
     (
         ComposeBuilder()
         .add_service(svc)
-        .declare_volume("sanity_home")
+        .declare_volume(f"sg_{tag}", config={"name": f"sg-${{COMPOSE_PROJECT_NAME:-sanity-gravity}}-{tag}"})
         .write(output_file)
     )
 

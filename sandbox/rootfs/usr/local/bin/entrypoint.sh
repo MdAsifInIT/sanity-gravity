@@ -37,8 +37,6 @@ fi
 if ! id -u "$HOST_UID" >/dev/null 2>&1; then
     useradd -u "$HOST_UID" -g "$HOST_GID" -m -s /bin/zsh "$USER_NAME"
     echo "User '$USER_NAME' created."
-    # Set default password
-    echo "$USER_NAME:$HOST_PASSWORD" | chpasswd
 else
     EXISTING_USER=$(getent passwd "$HOST_UID" | cut -d: -f1)
     echo "UID $HOST_UID already exists: $EXISTING_USER"
@@ -63,6 +61,15 @@ else
         fi
     fi
 fi
+
+# Set the login password on every boot, not only when the user is first
+# created. A container started from a committed/snapshot image (e.g. after
+# `sanity-cli upgrade`) already has the user, so the create-branch above is
+# skipped; without this, HOST_PASSWORD would be silently ignored for SSH /
+# system login and stay whatever was baked into the image. KASM is unaffected
+# only because kasm/startup.sh re-runs vncpasswd every boot — this brings
+# system auth in line with that.
+echo "$USER_NAME:$HOST_PASSWORD" | chpasswd
 
 # Passwordless Sudo
 echo "$USER_NAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-developer

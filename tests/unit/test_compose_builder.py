@@ -225,10 +225,10 @@ def test_snapshot_generate_compose_for_tag_kasm(tmp_path, monkeypatch):
     # the home dir, the workspace bind nested inside, and the volume is
     # declared at the top level.
     assert svc["volumes"] == [
-        "sanity_home:/home/${HOST_USER:-developer}",
+        "sg_ag-xfce-kasm:/home/${HOST_USER:-developer}",
         "${WORKSPACE_DIR:-./workspace}:/home/${HOST_USER:-developer}/workspace",
     ]
-    assert "sanity_home" in parsed["volumes"]
+    assert "sg_ag-xfce-kasm" in parsed["volumes"]
 
 
 def test_snapshot_generate_resource_compose(tmp_path, monkeypatch):

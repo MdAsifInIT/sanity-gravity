@@ -84,6 +84,8 @@ There are **11 valid combinations** in total. See [Modular Tag System](docs/tags
 
 ### Lifecycle
 
+*For a detailed explanation of persistence, isolation, and state management, see the [Sandbox Lifecycle Guide](docs/sandbox-lifecycle.md).*
+
 ```bash
 ./sanity-cli up -v <tag>        # Start a sandbox
   --password <pwd>              #   SSH/VNC password (default: antigravity)

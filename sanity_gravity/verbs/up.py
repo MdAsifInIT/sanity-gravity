@@ -18,6 +18,7 @@ from sanity_gravity.cli.io import (
     print_error,
     print_header,
     print_info,
+    print_warning,
     run_command,
     validate_project_name,
     validate_username,
@@ -85,6 +86,21 @@ def up(args):
     os.makedirs(workspace_path, exist_ok=True)
     print_info(f"Using Workspace: {workspace_path}")
     print_info(f"Project Name: {args.name}")
+
+    # Collision Detection (skip in dry run to avoid subprocess calls)
+    dry_run = bool(getattr(args, "dry_run", False))
+    if not dry_run:
+        container_name = f"{args.name}-{target}-1"
+        out = run_command(f"docker ps -a -q -f name=^{container_name}$", capture=True, check=False)
+        if out and isinstance(out, str) and out.strip() != "":
+            if not getattr(args, 'recreate', False):
+                print_error(f"Sandbox container '{container_name}' already exists!")
+                print_info("To wake it up, use 'sanity-cli start'.")
+                print_info("To apply new settings and recreate it, use 'sanity-cli up --recreate'.")
+                print_info("To completely destroy it, use 'sanity-cli clean'.")
+                sys.exit(1)
+            else:
+                print_warning(f"Recreating existing sandbox '{container_name}' as requested.")
 
     def _explicit(flags):
         return any(f in sys.argv for f in flags)

@@ -44,7 +44,6 @@ def _parse(*argv):
     "argv,expected",
     [
         (["up", "-v", "ag-xfce-kasm"], up),
-        (["run", "-v", "ag-xfce-kasm"], up),  # ``run`` is the alias
         (["build"], build),
         (["check"], check_prereqs),
         (["down"], down),
