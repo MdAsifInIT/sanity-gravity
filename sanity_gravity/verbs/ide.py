@@ -21,8 +21,9 @@ def ide_cmd(args):
     project_name = getattr(args, "name", "sanity-gravity")
     subcommand = args.ide_command
 
-    if project_name == "sanity-gravity":
-        active = get_active_projects()
+    active = get_active_projects()
+    
+    if getattr(args, "name", None) is None:
         if not active:
             print_error("No active managed projects found.")
             print_plain("Tip: Use --name <project> to specify a project.")
@@ -32,6 +33,8 @@ def ide_cmd(args):
             print_plain("Please specify a project with --name.")
             return
         project_name = active[0]
+    else:
+        project_name = args.name
 
     active = get_active_projects()
     if project_name not in active:
@@ -70,10 +73,10 @@ def ide_cmd(args):
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
     cli_src = os.path.join(
-        base_dir, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli"
+        base_dir, "plugins", "agents", "ag", "rootfs", "usr", "local", "bin", "gravity-cli"
     )
     cleanup_src = os.path.join(
-        base_dir, "sandbox", "rootfs", "usr", "local", "bin", "chrome-cleanup.sh"
+        base_dir, "plugins", "agents", "ag", "rootfs", "usr", "local", "bin", "chrome-cleanup.sh"
     )
 
     inject_cmd_1 = (
