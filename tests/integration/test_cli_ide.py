@@ -23,10 +23,10 @@ _REPO = str(_REPO_ROOT)
 
 def _expected_calls(cname: str, subcommand: str):
     cli_src = os.path.join(
-        _REPO, "sandbox", "rootfs", "usr", "local", "bin", "gravity-cli"
+        _REPO, "plugins", "agents", "ag", "rootfs", "usr", "local", "bin", "gravity-cli"
     )
     cleanup_src = os.path.join(
-        _REPO, "sandbox", "rootfs", "usr", "local", "bin", "chrome-cleanup.sh"
+        _REPO, "plugins", "agents", "ag", "rootfs", "usr", "local", "bin", "chrome-cleanup.sh"
     )
     devnull = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
     return [
