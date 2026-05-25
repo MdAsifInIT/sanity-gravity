@@ -263,14 +263,14 @@ def build_parser():
     )
     ide_update.add_argument("--name", "-n", default="sanity-gravity",
                             help="Project name")
-    ide_update.set_defaults(func=ide_cmd, ide_command="update-ide")
+    ide_update.set_defaults(func=ide_cmd, ide_command="update")
 
     ide_reinstall = ide_subparsers.add_parser(
         "reinstall", help="Cleanly purge and reinstall the IDE to fix crashes",
     )
     ide_reinstall.add_argument("--name", "-n", default="sanity-gravity",
                                help="Project name")
-    ide_reinstall.set_defaults(func=ide_cmd, ide_command="reinstall-ide")
+    ide_reinstall.set_defaults(func=ide_cmd, ide_command="reinstall")
 
     # test
     p_test = subparsers.add_parser("test", help="Run test suite")

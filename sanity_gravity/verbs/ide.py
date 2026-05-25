@@ -61,6 +61,16 @@ def ide_cmd(args):
         print_error(f"No running containers found for {project_name}.")
         return
 
+    from sanity_gravity.cli.registry import get_registry
+    registry = get_registry()
+    agent_slug = target_variant.split("-")[0]
+    agent_plugin = registry.agents.get(agent_slug)
+    
+    if not agent_plugin or "ide" not in agent_plugin.provides:
+        print_error(f"Agent '{agent_slug}' does not provide an IDE capability.")
+        print_error("IDE maintenance commands are not applicable.")
+        return
+
     print_header(f"IDE Maintenance ({project_name})")
     print_info(f"Executing gravity-cli {subcommand} in {container_name}...")
 
@@ -111,7 +121,7 @@ def ide_cmd(args):
 
     cmd = (
         "docker", "exec", "-it", "-u", "root", container_name,
-        "/usr/local/bin/gravity-cli", subcommand,
+        "/usr/local/bin/gravity-cli", "ide", subcommand,
     )
     try:
         subprocess.check_call(cmd)

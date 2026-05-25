@@ -5,7 +5,7 @@ kind = "agent"
 api_version = "1"
 
 [capabilities]
-provides = []
+provides = ["ide"]
 requires = ["display"]
 
 [build]

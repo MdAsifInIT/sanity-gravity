@@ -29,8 +29,8 @@ show_help() {
     echo "Usage: gravity-cli <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  update-ide     Safely update the Antigravity IDE to the latest version."
-    echo "  reinstall-ide  Completely wipe and cleanly reinstall the Antigravity IDE."
+    echo "  ide update     Safely update the Antigravity IDE to the latest version."
+    echo "  ide reinstall  Completely wipe and cleanly reinstall the Antigravity IDE."
     echo "  help           Show this help message."
     echo ""
     echo "Note: This tool is meant to be run INSIDE the Sanity-Gravity container."
@@ -184,11 +184,16 @@ if [ $# -eq 0 ]; then
 fi
 
 case "$1" in
-    update-ide)
-        update_ide
-        ;;
-    reinstall-ide)
-        reinstall_ide
+    ide)
+        if [ "$2" = "update" ]; then
+            update_ide
+        elif [ "$2" = "reinstall" ]; then
+            reinstall_ide
+        else
+            print_error "Unknown ide command: $2"
+            show_help
+            exit 1
+        fi
         ;;
     help)
         show_help
