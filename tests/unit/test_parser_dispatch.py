@@ -77,8 +77,8 @@ def test_subcommand_routes_to_expected_verb(argv, expected):
 def test_ide_subcommands_set_distinct_ide_command():
     """The two ide subcommands share ``ide_cmd`` but must pass distinct
     ``ide_command`` values via ``set_defaults``."""
-    assert _parse("ide", "update").ide_command == "update-ide"
-    assert _parse("ide", "reinstall").ide_command == "reinstall-ide"
+    assert _parse("ide", "update").ide_command == "update"
+    assert _parse("ide", "reinstall").ide_command == "reinstall"
 
 
 def test_dry_run_flag_lifted_to_top_level():

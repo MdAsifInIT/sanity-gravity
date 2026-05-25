@@ -4,7 +4,7 @@ import tempfile
 import stat
 import textwrap
 
-GRAVITY_CLI_PATH = os.path.abspath("sandbox/rootfs/usr/local/bin/gravity-cli")
+GRAVITY_CLI_PATH = os.path.abspath("plugins/agents/ag/rootfs/usr/local/bin/gravity-cli")
 
 def create_mock_command(dir_path, name, script_content):
     path = os.path.join(dir_path, name)
@@ -50,7 +50,7 @@ def test_gravity_cli_update_ide_success():
         env["PATH"] = f"{tmpdir}:{env.get('PATH', '')}"
         
         result = subprocess.run(
-            ["bash", bypassed_cli, "update-ide"],
+            ["bash", bypassed_cli, "ide", "update"],
             env=env,
             capture_output=True,
             text=True
@@ -118,7 +118,7 @@ def test_gravity_cli_update_ide_failure():
         env["PATH"] = f"{tmpdir}:{env.get('PATH', '')}"
         
         result = subprocess.run(
-            ["bash", bypassed_cli, "update-ide"],
+            ["bash", bypassed_cli, "ide", "update"],
             env=env,
             capture_output=True,
             text=True
@@ -139,7 +139,7 @@ def test_gravity_cli_reinstall_ide_success():
         env["PATH"] = f"{tmpdir}:{env.get('PATH', '')}"
         
         result = subprocess.run(
-            ["bash", bypassed_cli, "reinstall-ide"],
+            ["bash", bypassed_cli, "ide", "reinstall"],
             env=env,
             capture_output=True,
             text=True

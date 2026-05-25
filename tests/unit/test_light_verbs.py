@@ -187,14 +187,17 @@ class TestIdeVerb:
     """Cover the early-return paths and the docker-cp injection failure."""
 
     def _args(self, name="sanity-gravity", ide_command="diag"):
-        return argparse.Namespace(name=name, ide_command=ide_command)
+        args = {"ide_command": ide_command}
+        if name is not None:
+            args["name"] = name
+        return argparse.Namespace(**args)
 
     def test_no_active_projects(self):
         from sanity_gravity.verbs import ide as ide_mod
 
         with patch.object(ide_mod, "get_active_projects", return_value=[]), \
              patch.object(ide_mod, "print_error") as err:
-            ide_mod.ide_cmd(self._args())
+            ide_mod.ide_cmd(self._args(name=None))
             err.assert_called_once()
             assert "No active managed projects" in err.call_args[0][0]
 
@@ -204,7 +207,7 @@ class TestIdeVerb:
         with patch.object(ide_mod, "get_active_projects",
                           return_value=["p1", "p2"]), \
              patch.object(ide_mod, "print_error") as err:
-            ide_mod.ide_cmd(self._args())
+            ide_mod.ide_cmd(self._args(name=None))
             err.assert_called_once()
             assert "Multiple active projects" in err.call_args[0][0]
 

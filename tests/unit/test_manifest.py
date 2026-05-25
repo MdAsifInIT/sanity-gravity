@@ -62,7 +62,7 @@ def test_load_each_builtin_manifest(kind, slug):
 def test_ag_requires_display():
     m = load_manifest(PLUGINS_DIR / "agents" / "ag" / "manifest.toml")
     assert m.requires == ("display",)
-    assert m.provides == ()
+    assert m.provides == ("ide",)
 
 
 def test_xfce_provides_display():

@@ -35,7 +35,7 @@ def _expected_calls(cname: str, subcommand: str):
         ((("docker", "exec", "-u", "root", cname,
            "chmod", "+x", "/usr/local/bin/gravity-cli", "/usr/local/bin/chrome-cleanup.sh"),), devnull),
         ((("docker", "exec", "-it", "-u", "root", cname,
-           "/usr/local/bin/gravity-cli", subcommand),), {}),
+           "/usr/local/bin/gravity-cli", "ide", subcommand),), {}),
     ]
 
 
@@ -47,11 +47,11 @@ class TestIdeCommand:
         mock_get_active.return_value = ["sanity-gravity"]
         mock_run.return_value = "true"  # container running
 
-        args = argparse.Namespace(name="sanity-gravity", ide_command="update-ide")
+        args = argparse.Namespace(name="sanity-gravity", ide_command="update")
         ide_verb.ide_cmd(args)
 
         cname = "sanity-gravity-ag-xfce-kasm-1"
-        assert mock_check_call.call_args_list == _expected_calls(cname, "update-ide")
+        assert mock_check_call.call_args_list == _expected_calls(cname, "update")
 
     @patch("sanity_gravity.verbs.ide.run_command")
     @patch("subprocess.check_call")
@@ -60,11 +60,11 @@ class TestIdeCommand:
         mock_get_active.return_value = ["my-project"]
         mock_run.return_value = "true"
 
-        args = argparse.Namespace(name="my-project", ide_command="reinstall-ide")
+        args = argparse.Namespace(name="my-project", ide_command="reinstall")
         ide_verb.ide_cmd(args)
 
         cname = "my-project-ag-xfce-kasm-1"
-        assert mock_check_call.call_args_list == _expected_calls(cname, "reinstall-ide")
+        assert mock_check_call.call_args_list == _expected_calls(cname, "reinstall")
 
     @patch("sanity_gravity.verbs.ide.get_active_projects")
     @patch("sanity_gravity.verbs.ide.print_error")
@@ -77,7 +77,7 @@ class TestIdeCommand:
         mock_get_active.return_value = ["other-project"]
 
         args = argparse.Namespace(
-            name="non-existent-project", ide_command="update-ide"
+            name="non-existent-project", ide_command="update"
         )
         ide_verb.ide_cmd(args)
 
