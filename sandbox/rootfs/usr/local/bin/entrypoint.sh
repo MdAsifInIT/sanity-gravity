@@ -4,7 +4,7 @@ set -e
 # Defaults (Relies on upstream)
 HOST_UID=${HOST_UID}
 HOST_GID=${HOST_GID}
-USER_NAME=${HOST_USER}
+export USER_NAME=${HOST_USER}
 
 # Defence-in-depth: validate identity inputs before they reach sed/useradd/chown.
 # Mirrors validate_username / validate_project_name in sanity-cli; a malformed
@@ -82,11 +82,6 @@ if [ -d "/home/$USER_NAME/workspace" ]; then
     chown "$HOST_UID":"$HOST_GID" /home/"$USER_NAME/workspace"
 fi
 
-# Add to ssl-cert group if exists (for KasmVNC)
-if getent group ssl-cert >/dev/null; then
-    usermod -aG ssl-cert "$USER_NAME"
-fi
-
 # Setup Zsh (Optional: install oh-my-zsh if not present)
 # We can do this in Dockerfile to save startup time, but here we ensure ownership.
 
@@ -100,14 +95,6 @@ if [ "$USER_NAME" != "developer" ]; then
     sed -i "s|USER=\"developer\"|USER=\"$USER_NAME\"|g" /etc/supervisor/conf.d/*.conf
     # Fix for any occurrences of user=developer in general (supervisord specific)
     sed -i "s/^user=developer/user=$USER_NAME/g" /etc/supervisor/conf.d/*.conf
-    
-    # Also fix Kasm startup script if present (it exports HOME/USER)
-    if [ -f "/usr/local/bin/kasm-startup.sh" ]; then
-        sed -i "s|export HOME=/home/developer|export HOME=/home/$USER_NAME|g" /usr/local/bin/kasm-startup.sh
-        sed -i "s|export USER=developer|export USER=$USER_NAME|g" /usr/local/bin/kasm-startup.sh
-        # kasm vncpasswd -u argument
-        sed -i "s|-u developer|-u $USER_NAME|g" /usr/local/bin/kasm-startup.sh
-    fi
 fi
 
 # Setup DBus & Machine ID (skip if dbus not installed, e.g. headless builds)
@@ -128,19 +115,6 @@ else
     echo "DBus not installed, skipping (headless mode)."
 fi
 
-# Cleanup Stale Antigravity Runtime Locks (Safely)
-# Instead of deleting entire directories (which breaks TLS/CSRF states),
-# we only remove the actual Singleton locks that prevent startup.
-echo "Cleaning up stale Antigravity/Chrome locks..."
-find /home/"$USER_NAME"/.config/Antigravity -name "Singleton*" -delete 2>/dev/null || true
-find /home/"$USER_NAME"/.gemini/antigravity-browser-profile -name "Singleton*" -delete 2>/dev/null || true
-
-# Fix Chrome symlink for ARM64 (Chromium compatibility)
-if [ ! -f "/opt/google/chrome/google-chrome" ]; then
-    mkdir -p /opt/google/chrome
-    ln -sf /usr/bin/google-chrome /opt/google/chrome/google-chrome
-fi
-
 # Regenerate SSH host keys if missing (removed from image for security)
 if [ ! -f /etc/ssh/ssh_host_ed25519_key ]; then
     echo "Generating SSH host keys..."
@@ -151,30 +125,32 @@ fi
 # Triggered by Docker stop/host shutdown (SIGTERM to PID 1).
 # Works with docker-compose stop_grace_period: 30s to allow full state persistence.
 graceful_shutdown() {
-    echo "[shutdown] Graceful shutdown initiated, closing Antigravity..."
-    FOUND=0
-    for wid in $(su - "$USER_NAME" -c 'DISPLAY=:1 xdotool search --class Antigravity' 2>/dev/null); do
-        NAME=$(su - "$USER_NAME" -c "DISPLAY=:1 xdotool getwindowname $wid" 2>/dev/null)
-        case "$NAME" in
-            *" - Antigravity"*|"Antigravity"|"Launchpad")
-                su - "$USER_NAME" -c "DISPLAY=:1 xdotool key --window $wid ctrl+q" 2>/dev/null
-                FOUND=1
-                ;;
-        esac
-    done
-
-    if [ "$FOUND" = 1 ]; then
-        for i in $(seq 1 20); do
-            pgrep -f antigravity-bin > /dev/null 2>&1 || break
-            sleep 1
+    echo "[shutdown] Graceful shutdown initiated..."
+    
+    # Execute plugin shutdown hooks
+    if [ -d "/etc/shutdown.d" ]; then
+        for f in /etc/shutdown.d/*.sh; do
+            if [ -x "$f" ]; then
+                echo "Running shutdown hook $f..."
+                "$f"
+            fi
         done
-        echo "[shutdown] Antigravity exited after ${i}s"
     fi
 
     # Forward SIGTERM to supervisord
     kill -TERM "$SUPERVISOR_PID" 2>/dev/null
     wait "$SUPERVISOR_PID"
 }
+
+# Execute plugin entrypoint hooks
+if [ -d "/etc/entrypoint.d" ]; then
+    for f in /etc/entrypoint.d/*.sh; do
+        if [ -x "$f" ]; then
+            echo "Running entrypoint hook $f..."
+            "$f"
+        fi
+    done
+fi
 
 # Execute CMD (Supervisord) in background so we can trap signals
 "$@" &

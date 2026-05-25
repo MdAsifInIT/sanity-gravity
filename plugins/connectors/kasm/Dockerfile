@@ -21,6 +21,9 @@ RUN arch=$(dpkg --print-architecture); \
 # Add Supervisor Config for Kasm
 COPY supervisord.conf /etc/supervisor/conf.d/kasm.conf
 
+# Inject entrypoint hooks
+COPY rootfs/ /
+
 # Add Kasm Startup Script
 COPY startup.sh /usr/local/bin/kasm-startup.sh
 RUN chmod +x /usr/local/bin/kasm-startup.sh

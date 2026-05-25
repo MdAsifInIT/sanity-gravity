@@ -39,6 +39,10 @@ ENTRYPOINT_FILE = os.path.join(
     os.path.dirname(__file__),
     "..", "..", "sandbox", "rootfs", "usr", "local", "bin", "entrypoint.sh",
 )
+AG_SHUTDOWN_FILE = os.path.join(
+    os.path.dirname(__file__),
+    "..", "..", "plugins", "agents", "ag", "rootfs", "etc", "shutdown.d", "10-ag-shutdown.sh",
+)
 DOCKERFILE_BASE = os.path.join(
     os.path.dirname(__file__),
     "..", "..", "sandbox", "Dockerfile.base",
@@ -92,8 +96,8 @@ class TestGracefulShutdownConfig:
         content = _read_file(ENTRYPOINT_FILE)
         assert "trap graceful_shutdown SIGTERM" in content
 
-    def test_entrypoint_has_xdotool_ctrl_q(self):
-        content = _read_file(ENTRYPOINT_FILE)
+    def test_ag_shutdown_hook_has_xdotool_ctrl_q(self):
+        content = _read_file(AG_SHUTDOWN_FILE)
         assert "xdotool key --window" in content
         assert "ctrl+q" in content
 
@@ -128,9 +132,9 @@ class TestGracefulShutdownConfig:
         layer_content = _read_file(xfce_layer)
         assert "xdotool" in layer_content
 
-    def test_entrypoint_filters_helper_windows(self):
+    def test_ag_shutdown_hook_filters_helper_windows(self):
         """Must filter by window name to skip antigravity-bin helper windows."""
-        content = _read_file(ENTRYPOINT_FILE)
+        content = _read_file(AG_SHUTDOWN_FILE)
         assert '" - Antigravity"' in content
 
 # ---------------------------------------------------------------------------
