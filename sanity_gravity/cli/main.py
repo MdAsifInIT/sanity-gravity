@@ -91,11 +91,15 @@ def main():
         parser.print_help()
         sys.exit(1)
 
+    log_format = getattr(args, "log_format", "text")
+    if getattr(args, "json_output", False):
+        log_format = "json"
+
     # Build the reporter once, install it as the module-level handle so
     # legacy print_* helpers route through it, and also expose it on
     # ``args`` for handlers that want to emit events directly.
     reporter = build_default_reporter(
-        log_format=getattr(args, "log_format", "text"),
+        log_format=log_format,
     )
     set_reporter(reporter)
     args.reporter = reporter
