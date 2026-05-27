@@ -1,0 +1,12 @@
+[plugin]
+slug = "gc"
+name = "gemini-cli"
+kind = "agent"
+api_version = "1"
+
+[capabilities]
+provides = []
+requires = []
+
+[build]
+dockerfile = "Dockerfile"

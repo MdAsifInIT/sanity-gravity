@@ -1,0 +1,12 @@
+[plugin]
+slug = "none"
+name = "none"
+kind = "desktop"
+api_version = "1"
+
+[capabilities]
+provides = []
+requires = []
+
+[build]
+dockerfile = "Dockerfile"

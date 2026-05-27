@@ -1,0 +1,12 @@
+[plugin]
+slug = "ag"
+name = "antigravity"
+kind = "agent"
+api_version = "1"
+
+[capabilities]
+provides = ["ide"]
+requires = ["display"]
+
+[build]
+dockerfile = "Dockerfile"

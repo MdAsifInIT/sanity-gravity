@@ -1,0 +1,42 @@
+[plugin]
+slug = "kasm"
+name = "KasmVNC"
+kind = "connector"
+api_version = "1"
+
+[capabilities]
+# Both kasm and vnc deliver the same capability shape ("remote graphical
+# access"); we use one stable name so future agents can require it
+# without caring which specific protocol provides it. The current
+# capability solver only makes `display` load-bearing — these provides
+# strings are descriptive labels reserved for forward-compat.
+provides = ["remote-gui"]
+requires = ["display"]
+
+[build]
+dockerfile = "Dockerfile"
+
+[ports.http]
+internal = 8444
+default = 8444
+env_var = "KASM_PORT"
+legacy_slug = "kasm"
+
+[ports.ssh]
+internal = 22
+default = 2222
+env_var = "SSH_HOST_PORT"
+legacy_slug = "ssh"
+
+[compose]
+shm_size = "512m"
+restart = "unless-stopped"
+stop_grace_period = "30s"
+
+[announce]
+template = """
+URL:      https://localhost:{ports.http}
+SSH:      ssh -p {ports.ssh} {user}@localhost
+User:     {user}
+Pass:     {password}
+"""

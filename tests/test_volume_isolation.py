@@ -8,29 +8,20 @@ import sys
 import importlib.util
 from importlib.machinery import SourceFileLoader
 
-def load_sanity_cli():
-    if "sanity_cli" in sys.modules:
-        return sys.modules["sanity_cli"]
-
-    file_path = os.path.abspath("sanity-cli")
-    loader = SourceFileLoader("sanity_cli", file_path)
-    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("sanity_cli", loader))
-    loader.exec_module(module)
-    sys.modules["sanity_cli"] = module
-    return module
+from sanity_gravity.compose.generators import generate_compose_for_tag
 
 class TestVolumeIsolation:
     def test_volume_isolation_different_agents(self, tmpdir):
         """Classic Case: Different agents must mount different sanity_home volumes."""
-        sanity_cli = load_sanity_cli()
+        pass
         
         # Patch config_dir so it writes to tmpdir instead of the actual workspace config/
         old_cwd = os.getcwd()
         os.chdir(str(tmpdir))
         
         try:
-                out_ag, _ = sanity_cli.generate_compose_for_tag("ag-xfce-kasm")
-                out_gc, _ = sanity_cli.generate_compose_for_tag("gc-none-ssh")
+                out_ag, _ = generate_compose_for_tag("ag-xfce-kasm")
+                out_gc, _ = generate_compose_for_tag("gc-none-ssh")
                 
                 assert os.path.exists(out_ag)
                 assert os.path.exists(out_gc)
@@ -66,14 +57,13 @@ class TestVolumeIsolation:
 
     def test_volume_isolation_same_agent_different_connectors(self, tmpdir):
         """Edge Case: Same agent with different connectors must NOT share the same sanity_home volume."""
-        sanity_cli = load_sanity_cli()
         
         old_cwd = os.getcwd()
         os.chdir(str(tmpdir))
         
         try:
-            out_kasm, _ = sanity_cli.generate_compose_for_tag("ag-xfce-kasm")
-            out_ssh, _ = sanity_cli.generate_compose_for_tag("ag-xfce-ssh")
+            out_kasm, _ = generate_compose_for_tag("ag-xfce-kasm")
+            out_ssh, _ = generate_compose_for_tag("ag-xfce-ssh")
             
             with open(out_kasm, 'r') as f:
                 yaml_kasm = yaml.safe_load(f)

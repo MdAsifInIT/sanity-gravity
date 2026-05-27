@@ -1,0 +1,12 @@
+[plugin]
+slug = "xfce"
+name = "xfce"
+kind = "desktop"
+api_version = "1"
+
+[capabilities]
+provides = ["display"]
+requires = []
+
+[build]
+dockerfile = "Dockerfile"
