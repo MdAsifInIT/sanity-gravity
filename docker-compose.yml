@@ -34,6 +34,9 @@ services:
       - AUDIT_WRITE
     pids_limit: 2048
     ulimits:
+      core:
+        soft: 0
+        hard: 0
       nofile:
         soft: 65536
         hard: 65536

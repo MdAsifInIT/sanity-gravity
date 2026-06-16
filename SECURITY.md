@@ -33,6 +33,7 @@ The default runtime narrows the exposed surface where it can without breaking th
 - Tailscale access can be added with host-level portproxy rules scoped to the Tailscale IP.
 - Docker capabilities are dropped and only required capabilities are added back.
 - `pids_limit` is set to reduce process-exhaustion impact.
+- Linux core dumps are disabled in compose and PID 1 to prevent host-side WSL dump exhaustion from Electron/native crashes.
 - Antigravity tarballs are fetched with retry/fail-fast behavior and SHA256 verification.
 - DBus, SSH, and KasmVNC run under `supervisord`.
 - Shutdown hooks attempt graceful Electron termination before Docker's final kill window.

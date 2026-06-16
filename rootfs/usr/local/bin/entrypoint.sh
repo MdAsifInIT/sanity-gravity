@@ -6,6 +6,13 @@ HOST_UID=${HOST_UID}
 HOST_GID=${HOST_GID}
 export USER_NAME=${HOST_USER}
 
+# Prevent WSL/Docker Desktop from materializing enormous host-side crash dumps
+# when Chromium/Electron native code segfaults. Docker also sets this via
+# compose ulimits; doing it here keeps the policy inherited by supervisord and
+# every GUI/SSH child process even if the container is run without compose.
+ulimit -S -c 0 2>/dev/null || true
+ulimit -H -c 0 2>/dev/null || true
+
 # Defence-in-depth: validate identity inputs before they reach sed/useradd/chown.
 # Mirrors validate_username / validate_project_name in sanity-cli; a malformed
 # USER_NAME would otherwise allow shell/sed injection via the supervisor-config

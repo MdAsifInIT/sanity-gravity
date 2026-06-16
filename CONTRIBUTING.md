@@ -85,6 +85,15 @@ docker compose stop
 docker compose up -d
 ```
 
+Check core dump suppression:
+
+```bash
+docker compose config
+docker exec antigravity-ide sh -lc 'ulimit -c'
+```
+
+The expected runtime value is `0`.
+
 ## Shell Guidelines
 
 - Use Bash for runtime scripts when Bash features are needed.
@@ -103,6 +112,7 @@ This project intentionally keeps passwordless `sudo` and Electron `--no-sandbox`
 - Keep VNC and SSH localhost-bound by default.
 - For LAN testing, use `BIND_ADDR=0.0.0.0` and `scripts/setup-lan-firewall.ps1`; do not leave that mode enabled on untrusted networks.
 - If remote testing is required on Docker Desktop for Windows, keep Docker localhost-bound and use `scripts/setup-tailscale-portproxy.ps1` from an elevated PowerShell session.
+- Keep `ulimits.core=0` and the entrypoint `ulimit -c 0` policy in place unless there is a documented crash-debugging need.
 - Do not add broad capabilities unless there is a concrete runtime need.
 - Do not expose secrets in logs.
 - Do not weaken checksum verification for downloaded artifacts.

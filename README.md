@@ -189,6 +189,34 @@ Shutdown flow:
 3. The Antigravity shutdown hook asks GUI windows to quit, waits briefly, then sends `TERM` to remaining Antigravity processes.
 4. PID 1 forwards `TERM` to `supervisord`, which stops DBus, SSH, and KasmVNC as process groups.
 
+## WSL Crash Dump Protection
+
+Electron/Chromium native crashes inside Docker Desktop on WSL can produce very large Windows dump files under:
+
+```text
+%TEMP%\wsl-crashes
+```
+
+Sanity Gravity disables Linux core dumps at two layers:
+
+- Compose sets `ulimits.core` to `0`.
+- The container entrypoint runs `ulimit -c 0` before starting `supervisord`, so DBus, SSH, KasmVNC, XFCE, Antigravity, and Antigravity IDE inherit the no-core policy.
+
+On Windows hosts using WSL 2, also disable WSL crash dump capture:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-wsl-crashdump-policy.ps1 -CleanExisting -RestartWsl
+```
+
+That script sets this in `%USERPROFILE%\.wslconfig`:
+
+```ini
+[wsl2]
+maxCrashDumpCount=-1
+```
+
+`-CleanExisting` removes old `.dmp` files from `%TEMP%\wsl-crashes`. `-RestartWsl` runs `wsl --shutdown` so the setting takes effect.
+
 ## Security Model
 
 This is a developer sandbox, not a hostile multi-tenant boundary.
@@ -206,6 +234,7 @@ Compensating controls:
 - Tailscale-only access on Windows is provided by explicit portproxy and firewall rules, not by broad Docker port exposure.
 - Compose drops all Linux capabilities and adds back only the small set needed for this runtime.
 - `pids_limit` is set to reduce fork-bomb blast radius.
+- Core dumps are disabled to prevent WSL crash redirection from filling the Windows host disk.
 - Antigravity downloads are checksum-verified at build time.
 - KasmVNC brute-force IP blacklisting is disabled because Docker NAT can collapse clients to the same bridge IP and lock out legitimate local sessions. Keep the service localhost-bound unless you add a stronger external access layer.
 
@@ -254,6 +283,12 @@ LAN access does not connect:
 Get-NetFirewallRule -DisplayName "Sanity Gravity *"
 Test-NetConnection -ComputerName <host-lan-ip> -Port 8444
 Test-NetConnection -ComputerName <host-lan-ip> -Port 2222
+```
+
+WSL crash dumps are filling disk:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-wsl-crashdump-policy.ps1 -CleanExisting -RestartWsl
 ```
 
 Reset the environment:
