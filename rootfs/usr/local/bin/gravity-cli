@@ -1,0 +1,76 @@
+#!/bin/bash
+# gravity-cli: The Container-side Management Tool for Sanity-Gravity
+# This tool handles IDE updates, system repairs, and deep maintenance
+# from *inside* the sandbox environment, securely.
+
+set -euo pipefail
+
+# ANSI Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+
+print_error() { printf '%b\n' "${RED}${BOLD}[ERROR]${NC} $1"; }
+print_success() { printf '%b\n' "${GREEN}${BOLD}[SUCCESS]${NC} $1"; }
+print_info() { printf '%b\n' "${BLUE}${BOLD}[INFO]${NC} $1"; }
+print_warning() { printf '%b\n' "${YELLOW}${BOLD}[WARNING]${NC} $1"; }
+
+# Must be run as root
+if [ "$EUID" -ne 0 ]; then
+  print_error "gravity-cli must be run as root."
+  echo "Try with: sudo gravity-cli \"\$@\""
+  exit 1
+fi
+
+show_help() {
+    echo "Usage: gravity-cli <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  ide update     Safely update the Antigravity IDE to the latest version."
+    echo "  ide reinstall  Completely wipe and cleanly reinstall the Antigravity IDE."
+    echo "  help           Show this help message."
+    echo ""
+    echo "Note: This tool is meant to be run INSIDE the Sanity-Gravity container."
+}
+
+update_ide() {
+    print_error "Update via gravity-cli is disabled. IDE is managed via Dockerfile and tarballs."
+    exit 1
+}
+
+reinstall_ide() {
+    print_error "Reinstall via gravity-cli is disabled. IDE is managed via Dockerfile and tarballs."
+    exit 1
+}
+
+# Main Command Router
+if [ $# -eq 0 ]; then
+    show_help
+    exit 1
+fi
+
+case "$1" in
+    ide)
+        IDE_COMMAND="${2:-}"
+        if [ "$IDE_COMMAND" = "update" ]; then
+            update_ide
+        elif [ "$IDE_COMMAND" = "reinstall" ]; then
+            reinstall_ide
+        else
+            print_error "Unknown ide command: ${IDE_COMMAND:-<missing>}"
+            show_help
+            exit 1
+        fi
+        ;;
+    help)
+        show_help
+        ;;
+    *)
+        print_error "Unknown command: $1"
+        show_help
+        exit 1
+        ;;
+esac

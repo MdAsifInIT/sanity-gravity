@@ -1,0 +1,10 @@
+#!/bin/bash
+CHROME_FLAGS=(--no-sandbox --disable-dev-shm-usage --disable-gpu --no-first-run --no-default-browser-check)
+if [ -f "/usr/bin/chromium" ]; then
+    exec /usr/bin/chromium "${CHROME_FLAGS[@]}" "$@"
+elif [ -f "/opt/google/chrome/google-chrome" ]; then
+    exec /opt/google/chrome/google-chrome "${CHROME_FLAGS[@]}" "$@"
+else
+    echo "No browser executable found!" >&2
+    exit 1
+fi

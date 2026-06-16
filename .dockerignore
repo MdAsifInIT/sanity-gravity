@@ -1,0 +1,10 @@
+.git
+.github
+.vscode
+workspace
+README.md
+CONTRIBUTING.md
+SECURITY.md
+Makefile
+docker-compose.yml
+scripts/*.ps1

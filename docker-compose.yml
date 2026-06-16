@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+  antigravity-ide:
+    build: .
+    image: antigravity-ide:latest
+    container_name: antigravity-ide
+    environment:
+      - HOST_UID=1000
+      - HOST_GID=1000
+      - HOST_USER=developer
+      - HOST_PASSWORD=${HOST_PASSWORD:?HOST_PASSWORD must be set}
+      - SSH_PUBLIC_KEY=${SSH_PUBLIC_KEY:-}
+    env_file:
+      - .env
+    volumes:
+      - ./workspace:/home/developer/workspace
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${VNC_PORT:-8444}:8444"
+      - "${BIND_ADDR:-127.0.0.1}:${SSH_PORT:-2222}:22"
+    shm_size: 512m
+    restart: unless-stopped
+    stop_grace_period: 60s
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - KILL
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
+      - AUDIT_WRITE
+    pids_limit: 2048
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536

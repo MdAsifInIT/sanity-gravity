@@ -1,0 +1,8 @@
+# Normalize text files to LF in Git so Docker-bound scripts and config stay portable.
+* text=auto eol=lf
+
+# Ensure shell scripts always use LF line endings so they run correctly in Docker containers on Windows.
+*.sh text eol=lf
+*.conf text eol=lf
+*.ps1 text eol=lf
+rootfs/**/gravity-cli text eol=lf
