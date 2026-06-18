@@ -31,7 +31,7 @@ The default runtime narrows the exposed surface where it can without breaking th
 - Ports are localhost-bound by default.
 - LAN access can be enabled deliberately with `BIND_ADDR=0.0.0.0` and firewall rules scoped to `LocalSubnet`.
 - Tailscale access can be added with host-level portproxy rules scoped to the Tailscale IP.
-- Docker capabilities are dropped and only required capabilities are added back.
+- Docker capabilities are dropped and only required capabilities are added back. `SYS_CHROOT` is retained for OpenSSH's pre-auth sandbox.
 - `pids_limit` is set to reduce process-exhaustion impact.
 - Linux core dumps are disabled in compose and PID 1 to prevent host-side WSL dump exhaustion from Electron/native crashes.
 - Antigravity tarballs are fetched with retry/fail-fast behavior and SHA256 verification.

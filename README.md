@@ -268,6 +268,12 @@ docker ps --filter name=antigravity-ide
 docker exec antigravity-ide sh -lc 'ps -ef | grep "[s]shd"; netstat -ltnp | grep ":22 " || true'
 ```
 
+If `ssh -vvv developer@127.0.0.1 -p 2222` shows the OpenSSH banner and then closes during key exchange, verify the compose capability allow-list still includes `SYS_CHROOT` and recreate the container:
+
+```bash
+docker compose up -d --force-recreate
+```
+
 Tailscale forwarding does not connect:
 
 ```powershell
