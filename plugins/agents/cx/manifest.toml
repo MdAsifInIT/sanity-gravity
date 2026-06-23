@@ -1,0 +1,12 @@
+[plugin]
+slug = "cx"
+name = "codex-cli"
+kind = "agent"
+api_version = "1"
+
+[capabilities]
+provides = []
+requires = []
+
+[build]
+dockerfile = "Dockerfile"

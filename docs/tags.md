@@ -11,8 +11,10 @@ The AI tool installed in the sandbox.
 | Slug | Name | Requires GUI | What's Installed |
 |:-----|:-----|:-------------|:-----------------|
 | `ag` | Antigravity IDE | Yes | Antigravity IDE + Google Chrome |
-| `gc` | Gemini CLI | No | Node.js 22 + `@google/gemini-cli` |
+| `agy` | Antigravity CLI | No | Antigravity CLI (official installer) |
 | `cc` | Claude Code | No | Claude Code CLI (official installer) |
+| `cx` | OpenAI Codex CLI | No | Codex CLI (static musl `codex` binary, official installer) |
+| `gc` | Gemini CLI | No | Node.js 22 + `@google/gemini-cli` |
 
 ### Desktops
 
@@ -42,21 +44,31 @@ Not all combinations are valid. Two rules are enforced:
 
 These rules are enforced by `sanity-cli` at build time and run time.
 
-## All Valid Tags (11)
+## All Valid Tags (19)
+
+Listed in the same order as `./sanity-cli list` (agents sorted alphabetically).
 
 | Tag | Agent | Desktop | Connector | Use Case |
 |:----|:------|:--------|:----------|:---------|
 | **`ag-xfce-kasm`** | Antigravity | XFCE | KasmVNC | Full IDE sandbox via browser **(default)** |
-| `ag-xfce-vnc` | Antigravity | XFCE | TigerVNC | Full IDE sandbox via legacy VNC client |
 | `ag-xfce-ssh` | Antigravity | XFCE | SSH | Full IDE sandbox, SSH-only access |
-| `gc-xfce-kasm` | Gemini CLI | XFCE | KasmVNC | Gemini with browser desktop |
-| `gc-xfce-vnc` | Gemini CLI | XFCE | TigerVNC | Gemini with legacy VNC |
-| `gc-xfce-ssh` | Gemini CLI | XFCE | SSH | Gemini with GUI, SSH-only access |
-| `gc-none-ssh` | Gemini CLI | Headless | SSH | Lightweight Gemini terminal |
-| `cc-xfce-kasm` | Claude Code | XFCE | KasmVNC | Claude Code with browser desktop |
-| `cc-xfce-vnc` | Claude Code | XFCE | TigerVNC | Claude Code with legacy VNC |
-| `cc-xfce-ssh` | Claude Code | XFCE | SSH | Claude Code with GUI, SSH-only access |
+| `ag-xfce-vnc` | Antigravity | XFCE | TigerVNC | Full IDE sandbox via legacy VNC client |
+| `agy-none-ssh` | Antigravity CLI | Headless | SSH | Lightweight Antigravity CLI terminal |
+| `agy-xfce-kasm` | Antigravity CLI | XFCE | KasmVNC | Antigravity CLI with browser desktop |
+| `agy-xfce-ssh` | Antigravity CLI | XFCE | SSH | Antigravity CLI with GUI, SSH-only access |
+| `agy-xfce-vnc` | Antigravity CLI | XFCE | TigerVNC | Antigravity CLI with legacy VNC |
 | `cc-none-ssh` | Claude Code | Headless | SSH | Lightweight Claude Code terminal |
+| `cc-xfce-kasm` | Claude Code | XFCE | KasmVNC | Claude Code with browser desktop |
+| `cc-xfce-ssh` | Claude Code | XFCE | SSH | Claude Code with GUI, SSH-only access |
+| `cc-xfce-vnc` | Claude Code | XFCE | TigerVNC | Claude Code with legacy VNC |
+| `cx-none-ssh` | OpenAI Codex | Headless | SSH | Lightweight Codex terminal |
+| `cx-xfce-kasm` | OpenAI Codex | XFCE | KasmVNC | Codex with browser desktop |
+| `cx-xfce-ssh` | OpenAI Codex | XFCE | SSH | Codex with GUI, SSH-only access |
+| `cx-xfce-vnc` | OpenAI Codex | XFCE | TigerVNC | Codex with legacy VNC |
+| `gc-none-ssh` | Gemini CLI | Headless | SSH | Lightweight Gemini terminal |
+| `gc-xfce-kasm` | Gemini CLI | XFCE | KasmVNC | Gemini with browser desktop |
+| `gc-xfce-ssh` | Gemini CLI | XFCE | SSH | Gemini with GUI, SSH-only access |
+| `gc-xfce-vnc` | Gemini CLI | XFCE | TigerVNC | Gemini with legacy VNC |
 
 ## Discovery Commands
 

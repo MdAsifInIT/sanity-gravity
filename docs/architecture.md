@@ -8,16 +8,19 @@ Every Sanity-Gravity image is assembled through a **4-layer FROM chain**. Each l
 ubuntu:24.04 (pinned SHA)
  └─ Dockerfile.base                      → sanity-gravity:_base
      ├─ plugins/desktops/xfce/           → sanity-gravity:_base-xfce
-     │   ├─ plugins/agents/ag/           → sanity-gravity:_ag-xfce
-     │   │   ├─ plugins/connectors/kasm/ → sanity-gravity:ag-xfce-kasm
-     │   │   ├─ plugins/connectors/vnc/  → sanity-gravity:ag-xfce-vnc
-     │   │   └─ plugins/connectors/ssh/  → sanity-gravity:ag-xfce-ssh
-     │   ├─ plugins/agents/gc/           → sanity-gravity:_gc-xfce  → gc-xfce-{kasm,vnc,ssh}
-     │   └─ plugins/agents/cc/           → sanity-gravity:_cc-xfce  → cc-xfce-{kasm,vnc,ssh}
+     │   ├─ plugins/agents/ag/           → sanity-gravity:_ag-xfce → ag-xfce-{kasm,vnc,ssh}
+     │   ├─ plugins/agents/agy/          → sanity-gravity:_agy-xfce → agy-xfce-{kasm,vnc,ssh}
+     │   ├─ plugins/agents/cc/           → sanity-gravity:_cc-xfce → cc-xfce-{kasm,vnc,ssh}
+     │   ├─ plugins/agents/cx/           → sanity-gravity:_cx-xfce → cx-xfce-{kasm,vnc,ssh}
+     │   └─ plugins/agents/gc/           → sanity-gravity:_gc-xfce → gc-xfce-{kasm,vnc,ssh}
      └─ plugins/desktops/none/           → sanity-gravity:_base-none
-         ├─ plugins/agents/gc/           → sanity-gravity:_gc-none   → gc-none-ssh
-         └─ plugins/agents/cc/           → sanity-gravity:_cc-none   → cc-none-ssh
+         ├─ plugins/agents/agy/          → sanity-gravity:_agy-none → agy-none-ssh
+         ├─ plugins/agents/cc/           → sanity-gravity:_cc-none → cc-none-ssh
+         ├─ plugins/agents/cx/           → sanity-gravity:_cx-none → cx-none-ssh
+         └─ plugins/agents/gc/           → sanity-gravity:_gc-none → gc-none-ssh
 ```
+
+(`ag` requires a GUI desktop, so it has no headless `none` variant.)
 
 Each non-base layer lives under `plugins/<kind>/<slug>/` alongside a
 `manifest.toml` declaring its capabilities, ports, compose overlay, and
@@ -63,10 +66,10 @@ visibility to its own files.
 
 ## Build Phases
 
-`./sanity-cli build` (with no arguments) builds all 11 images in two phases:
+`./sanity-cli build` (with no arguments) builds all 19 images in two phases:
 
-1. **Phase 1: Intermediates** — builds the 8 shared intermediate images (`_base`, `_base-xfce`, `_base-none`, `_ag-xfce`, `_gc-xfce`, `_cc-xfce`, `_gc-none`, `_cc-none`).
-2. **Phase 2: Finals** — builds all 11 final images on top of the intermediates.
+1. **Phase 1: Intermediates** — builds the 12 shared intermediate images (`_base`, `_base-xfce`, `_base-none`, `_ag-xfce`, `_agy-xfce`, `_agy-none`, `_cc-xfce`, `_cc-none`, `_cx-xfce`, `_cx-none`, `_gc-xfce`, `_gc-none`).
+2. **Phase 2: Finals** — builds all 19 final images on top of the intermediates.
 
 ## Entrypoint
 
@@ -104,10 +107,16 @@ plugins/                        # Manifest-driven extension point (PR #6)
 │   ├── ag/                     # Layer 3: Antigravity IDE + Chrome
 │   │   ├── manifest.toml       #   requires=[display]
 │   │   └── Dockerfile
-│   ├── gc/                     # Layer 3: Node.js + Gemini CLI
+│   ├── agy/                    # Layer 3: Antigravity CLI
 │   │   ├── manifest.toml
 │   │   └── Dockerfile
-│   └── cc/                     # Layer 3: Claude Code CLI
+│   ├── cc/                     # Layer 3: Claude Code CLI
+│   │   ├── manifest.toml
+│   │   └── Dockerfile
+│   ├── cx/                     # Layer 3: OpenAI Codex CLI (codex binary)
+│   │   ├── manifest.toml
+│   │   └── Dockerfile
+│   └── gc/                     # Layer 3: Node.js + Gemini CLI
 │       ├── manifest.toml
 │       └── Dockerfile
 └── connectors/

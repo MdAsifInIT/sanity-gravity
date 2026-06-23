@@ -52,7 +52,7 @@ AI agents run arbitrary code. One rogue `rm -rf /` and your host is toast. Sanit
 | :----------------------------- | :---------------------------------------------------------------------------------------------------------------- |
 | **Host Isolation**             | Even if an agent runs `rm -rf /` or downloads malware, only the sandbox is destroyed. Your host stays untouched.  |
 | **Full GUI Desktop**           | Ubuntu 24.04 + XFCE4 + KasmVNC. Agents operate browsers and GUI apps just like a human would.                    |
-| **Headless CLI Agents**        | Minimal images for Gemini CLI and Claude Code — no desktop overhead, just SSH.                                    |
+| **Headless CLI Agents**        | Minimal images for Gemini CLI, Claude Code, and OpenAI Codex — no desktop overhead, just SSH.                     |
 | **Out-of-the-Box**             | Pre-installed with Antigravity IDE, Google Chrome, and Git. Zero setup time.                                      |
 | **Seamless Disk I/O**          | Smart UID/GID mapping. No root-owned file disasters after host volume mounts.                                     |
 | **Multi-Instance**             | Parallel isolated sandboxes. Host ports are auto-allocated when unspecified (zero conflicts), or can be set manually. |
@@ -75,10 +75,12 @@ Every image is described by a tag: **`{agent}-{desktop}-{connector}`**. Pick one
 | Use Gemini CLI with a desktop    | `gc-xfce-kasm`   | `https://localhost:8444`   |
 | Use Claude Code in a terminal    | `cc-none-ssh`    | `ssh -p 2222 ...`         |
 | Use Claude Code with a desktop   | `cc-xfce-kasm`   | `https://localhost:8444`   |
+| Use OpenAI Codex in a terminal   | `cx-none-ssh`    | `ssh -p 2222 ...`         |
+| Use OpenAI Codex with a desktop  | `cx-xfce-kasm`   | `https://localhost:8444`   |
 
 > **First time?** Start with **`ag-xfce-kasm`** — it gives you the full desktop experience via your browser.
 
-There are **11 valid combinations** in total. See [Modular Tag System](docs/tags.md) for the full matrix, dimension model, and constraint rules.
+There are **19 valid combinations** in total. See [Modular Tag System](docs/tags.md) for the full matrix, dimension model, and constraint rules.
 
 ## Command Reference
 
@@ -205,7 +207,7 @@ sanity-gravity/
 │   ├── Dockerfile.base         # Base layer: Ubuntu 24.04 + SSH + supervisord
 │   ├── layers/
 │   │   ├── desktops/           # xfce, none
-│   │   ├── agents/             # ag (Antigravity), gc (Gemini CLI), cc (Claude Code)
+│   │   ├── agents/             # ag (Antigravity), agy (Antigravity CLI), gc (Gemini CLI), cc (Claude Code), cx (OpenAI Codex)
 │   │   └── connectors/         # kasm (KasmVNC), vnc (TigerVNC), ssh
 │   └── rootfs/                 # Shared overlay (entrypoint, gravity-cli, supervisor configs)
 ├── lib/                        # Proxy manager module
