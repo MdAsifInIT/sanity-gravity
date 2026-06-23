@@ -3,6 +3,11 @@
 # Shared cleanup logic for Chrome & Antigravity Agent to ensure Snapshot stability.
 
 # 1. Standard Locks (Prevent "Profile in use")
+# Resolve Chrome config directory for the current user
+CHROME_CONFIG="${HOME}/.config/google-chrome"
+if [ ! -d "$CHROME_CONFIG" ]; then
+    CHROME_CONFIG="${HOME}/.config/chromium"
+fi
 rm -f "$CHROME_CONFIG/SingletonLock"
 rm -f "$CHROME_CONFIG/SingletonSocket"
 rm -f "$CHROME_CONFIG/SingletonCookie"
@@ -29,7 +34,7 @@ rm -rf "$CHROME_CONFIG/GrShaderCache"
 rm -rf "$CHROME_CONFIG/Default/GPUCache"
 
 # 5. IPC & Shared Memory Debris in /tmp
-find /tmp -name ".org.chromium.Chromium*" -user $USER -delete 2>/dev/null || true
+find /tmp -name ".org.chromium.Chromium*" -user "${USER:-$(id -un)}" -delete 2>/dev/null || true
 
 # 6. Antigravity Singleton Sockets (Prevent Stale Locks on Restart)
 # Only clean these up at container/desktop startup to avoid interfering
@@ -39,4 +44,4 @@ rm -f "$HOME/.config/Antigravity/SingletonSocket"
 rm -f "$HOME/.config/Antigravity/SingletonCookie"
 rm -f "$HOME/.config/Antigravity/singleton-cookie"
 
-echo "$(date): [chrome-cleanup] Cleanup completed for user $USER" >> /tmp/chrome-cleanup.log
+echo "$(date): [chrome-cleanup] Cleanup completed for user ${USER:-$(id -un)}" >> /tmp/chrome-cleanup.log
