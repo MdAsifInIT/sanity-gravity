@@ -17,11 +17,35 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
 </p>
 
+## Why a sandbox?
+
+An AI coding agent was asked to reorganize a project. Instead it ran a recursive force-delete against the wrong path — because the developer's Windows username had a space in it — and wiped their **entire user profile, bypassing the Recycle Bin.**
+
+<p align="center">
+  <img src="assets/why-agent-disaster-1.png" alt="AI agent reporting it deleted the entire project directory" width="48%">
+  <img src="assets/why-agent-disaster-2.png" alt="AI agent escalating: entire Windows user profile wiped, bypassing the Recycle Bin" width="48%">
+</p>
+
+This isn't hypothetical — it happened to one of this project's own contributors. The trigger was Windows-specific; the risk isn't.
+
+Agentic coding tools — Antigravity, Claude Code, Codex — are at their best when you let them run *autonomously*: plan, edit, run commands, no babysitting. But "autonomous" + "your real filesystem" is russian roulette. One malformed path, one over-eager sub-agent, and there is no undo.
+
+**sanity-gravity is the seatbelt.** It hands the agent a full Linux desktop / IDE / SSH box to run wild in, while your real machine stays untouchable:
+
+- **Isolated filesystem** — the agent can't see your host unless you explicitly mount a workspace.
+- **Least privilege** — dropped Linux capabilities, pid limits, no core dumps.
+- **Runs where you work** — Linux, macOS (Apple Silicon), and Windows (WSL2).
+- **Snapshots** — broke the environment? roll back in seconds.
+
+Let the agent go full YOLO. The blast radius stops at the container wall.
+
 ## Prerequisites
 
 * Docker & Docker Compose (v2.0+)
 * Python 3.7+
-* **Tested on**: Ubuntu (amd64/arm64), macOS (Apple Silicon)
+* **Tested on**: Ubuntu (amd64/arm64), macOS (Apple Silicon), Windows (WSL2 + Docker Desktop)
+
+> **Windows / WSL2:** run `scripts/setup-wsl-crashdump-policy.ps1` once to stop WSL from writing gigabyte crash dumps when a sandboxed browser/agent segfaults.
 
 ## TL;DR
 
