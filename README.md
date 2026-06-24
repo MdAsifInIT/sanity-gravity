@@ -80,6 +80,8 @@ Every image is described by a tag: **`{agent}-{desktop}-{connector}`**. Pick one
 
 > **First time?** Start with **`ag-xfce-kasm`** — it gives you the full desktop experience via your browser.
 
+> **Heads-up:** `gc` (Gemini CLI) lost its free tier on 2026-06-18 and now requires a paid Gemini API key / Code Assist license. New users should prefer **`agy`** (Antigravity CLI), Google's official successor — already shipped here.
+
 There are **19 valid combinations** in total. See [Modular Tag System](docs/tags.md) for the full matrix, dimension model, and constraint rules.
 
 ## Command Reference

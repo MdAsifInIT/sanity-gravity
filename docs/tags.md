@@ -11,10 +11,15 @@ The AI tool installed in the sandbox.
 | Slug | Name | Requires GUI | What's Installed |
 |:-----|:-----|:-------------|:-----------------|
 | `ag` | Antigravity IDE | Yes | Antigravity IDE + Google Chrome |
-| `agy` | Antigravity CLI | No | Antigravity CLI (official installer) |
+| `agy` | Antigravity CLI | No | Antigravity CLI (official installer) -- Gemini CLI's official successor |
 | `cc` | Claude Code | No | Claude Code CLI (official installer) |
 | `cx` | OpenAI Codex CLI | No | Codex CLI (static musl `codex` binary, official installer) |
-| `gc` | Gemini CLI | No | Node.js 22 + `@google/gemini-cli` |
+| `gc` | Gemini CLI **(deprecated)** | No | Node.js 22 + `@google/gemini-cli` |
+
+> **`gc` is deprecated.** Google shut down the Gemini CLI free tier on
+> 2026-06-18; it now requires a paid Gemini API key / Code Assist license.
+> The plugin and its images are kept for those users, but new users should
+> prefer **`agy`** (Antigravity CLI), Google's official replacement.
 
 ### Desktops
 
