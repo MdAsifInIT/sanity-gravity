@@ -89,3 +89,25 @@ def test_dry_run_ephemeral_port_renders_placeholder():
     body = msgs[0]
     assert "ssh=<ephemeral>" in body
     assert "kasm=8444" in body
+
+
+def test_ssh_announce_points_at_sanity_cli_shell():
+    """The ssh connector's Shell hint must use ``./sanity-cli shell
+    --name {project}`` -- the supported entry point -- not a raw
+    ``docker exec``. Guards the {project} placeholder wiring too."""
+    ctx = SimpleNamespace(
+        tag=Tag(agent="cc", desktop="none", connector="ssh"),
+        host_user="dev",
+        password="secret",
+        project="dev-02",
+        container_name="dev-02-cc-none-ssh-1",
+        resolved_ports={"ssh": "2222"},
+        dry_run=False,
+        reporter=_RecorderReporter(),
+    )
+    announce(ctx)
+    access = [m for kind, m in ctx.reporter.messages if kind == "access"]
+    assert access, "expected an access block"
+    body = access[0]
+    assert "./sanity-cli shell --name dev-02" in body
+    assert "docker exec" not in body

@@ -316,6 +316,10 @@ def announce(ctx) -> None:
         tag=str(ctx.tag),
         connector=connector_slug,
         container_name=ctx.container_name,
+        # The CLI targets an instance by its project name (``--name``), so
+        # announce templates can point users at ``./sanity-cli shell
+        # --name {project}`` instead of a raw ``docker exec``.
+        project=ctx.project,
     )
 
     merged: dict[str, str] = {}

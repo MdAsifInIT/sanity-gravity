@@ -107,11 +107,13 @@ def test_vnc_environment_includes_vnc_pw():
     assert set(by_label) == {"vnc", "novnc", "ssh"}
 
 
-def test_ssh_announce_uses_container_name():
+def test_ssh_announce_uses_sanity_cli_shell():
     m = load_manifest(PLUGINS_DIR / "connectors" / "ssh" / "manifest.toml")
     assert m.compose.is_empty()
     assert m.environment == ()
-    assert "{container_name}" in m.announce.template
+    # The Shell hint points at the supported entry point, not docker exec.
+    assert "./sanity-cli shell --name {project}" in m.announce.template
+    assert "docker exec" not in m.announce.template
 
 
 # ---------------------------------------------------------------------------
