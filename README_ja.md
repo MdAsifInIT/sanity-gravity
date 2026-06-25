@@ -17,11 +17,35 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
 </p>
 
+## なぜサンドボックスが必要か?
+
+ある AI コーディングエージェントにプロジェクトの再編成を頼んだところ、誤ったパスに対して再帰的な強制削除を実行してしまった — 開発者の Windows ユーザー名にスペースが含まれていたせいだ — そして**ユーザープロファイル全体を、ごみ箱を経由せずに**消し去った。
+
+<p align="center">
+  <img src="assets/why-agent-disaster-1.png" alt="プロジェクトディレクトリ全体を削除したと報告する AI エージェント" width="48%">
+  <img src="assets/why-agent-disaster-2.png" alt="Windows ユーザープロファイル全体がごみ箱を経由せず消えたとさらに報告する AI エージェント" width="48%">
+</p>
+
+これは仮の話ではない — 本プロジェクトのコントリビューター自身に起きたことだ。引き金は Windows 固有のものだったが、リスクはそうではない。
+
+Agentic なコーディングツール — Antigravity、Claude Code、Codex — は、*自律的に*動かす(計画・編集・コマンド実行を、付きっきりにならずに任せる)ときに最も力を発揮する。しかし「自律」+「実際のファイルシステム」はロシアンルーレットだ。不正なパス一つ、暴走したサブエージェント一つで、取り返しがつかなくなる。
+
+**sanity-gravity はそのシートベルトだ。** エージェントにフルの Linux デスクトップ / IDE / SSH 環境を与えて思う存分動かしつつ、あなたの実マシンは手つかずのまま:
+
+- **隔離されたファイルシステム** — ワークスペースを明示的にマウントしない限り、エージェントはホストを見られない。
+- **最小権限** — Linux capabilities の削除、pid 数の制限、コアダンプの無効化。
+- **使い慣れた環境で動く** — Linux、macOS (Apple Silicon)、そして Windows (WSL2)。
+- **スナップショット** — 環境を壊した?数秒でロールバック。
+
+エージェントを全力で走らせよう。被害範囲はコンテナの壁で止まる。
+
 ## 前提条件
 
 * Docker & Docker Compose (v2.0+)
 * Python 3.7+
-* **検証済み環境**: Ubuntu (amd64/arm64)、macOS (Apple Silicon)
+* **検証済み環境**: Ubuntu (amd64/arm64)、macOS (Apple Silicon)、Windows (WSL2 + Docker Desktop)
+
+> **Windows / WSL2:** サンドボックス内のブラウザ / エージェントがクラッシュした際に WSL が数 GB のクラッシュダンプを書き出すのを防ぐため、初回に一度 `scripts/setup-wsl-crashdump-policy.ps1` を実行してください。
 
 ## TL;DR
 

@@ -17,11 +17,35 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
 </p>
 
+## 為什麼需要沙箱?
+
+有人請一個 AI coding agent 重整專案,結果它對錯誤的路徑執行了遞迴強制刪除 — 只因為開發者的 Windows 使用者名稱含有空格 — 直接抹除了他**整個使用者設定檔,還繞過了資源回收筒。**
+
+<p align="center">
+  <img src="assets/why-agent-disaster-1.png" alt="AI agent 回報它刪掉了整個專案目錄" width="48%">
+  <img src="assets/why-agent-disaster-2.png" alt="AI agent 進一步回報:整個 Windows 使用者設定檔被抹除,且繞過資源回收筒" width="48%">
+</p>
+
+這不是假設 — 它真的發生在本專案的一位貢獻者身上。觸發原因是 Windows 特有的,但風險不是。
+
+Agentic coding 工具 — Antigravity、Claude Code、Codex — 在你放手讓它們*自主*運作(規劃、修改、執行指令,全程不用盯著)時最為強大。但「自主」加上「你的真實檔案系統」就是俄羅斯輪盤:一個畸形路徑、一個過度積極的 sub-agent,就再也回不去了。
+
+**sanity-gravity 就是那條安全帶。** 它給 agent 一整套 Linux 桌面 / IDE / SSH 環境去盡情折騰,同時你的真實機器毫髮無傷:
+
+- **隔離的檔案系統** — 除非你明確掛載 workspace,否則 agent 看不到你的主機。
+- **最小權限** — 移除 Linux capabilities、限制 pid 數量、關閉 core dump。
+- **在你慣用的平台上運行** — Linux、macOS (Apple Silicon),以及 Windows (WSL2)。
+- **快照** — 環境弄壞了?幾秒內還原。
+
+放手讓 agent 全速狂飆,波及範圍止步於容器的牆。
+
 ## 系統需求
 
 * Docker & Docker Compose (v2.0+)
 * Python 3.7+
-* **已驗證環境**：Ubuntu (amd64/arm64)、macOS (Apple Silicon)
+* **已驗證環境**：Ubuntu (amd64/arm64)、macOS (Apple Silicon)、Windows (WSL2 + Docker Desktop)
+
+> **Windows / WSL2:** 首次使用請執行一次 `scripts/setup-wsl-crashdump-policy.ps1`,避免沙箱內的瀏覽器 / agent 崩潰時 WSL 寫出數 GB 的 crash dump。
 
 ## TL;DR
 
